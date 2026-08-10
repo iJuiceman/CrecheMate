@@ -20,7 +20,8 @@ enum UserStatus {
 
 model User {
   id           String     @id @default(uuid())
-  email        String     @unique
+  username     String     @unique
+  email        String? // optional — records/receipts only, not used for login
   passwordHash String     @map("password_hash")
   firstName    String     @map("first_name")
   lastName     String     @map("last_name")
@@ -147,6 +148,10 @@ model Attendance {
 // ── Facility (single onsite service) ────────────────────────────────────
 model FacilitySettings {
   id              String   @id @default(uuid())
+  // Single-facility app: this row is a singleton. The unique-on-a-constant
+  // column makes a second settings row impossible at the database level, so a
+  // boot-time race can never create duplicates.
+  singleton       Boolean  @unique @default(true)
   name            String   @default("CrecheMate")
   timezone        String   @default("Australia/Sydney")
   capacity        Int      @default(20) // max concurrent children
@@ -154,6 +159,12 @@ model FacilitySettings {
   openTime        String   @default("07:00") @map("open_time")
   closeTime       String   @default("18:00") @map("close_time")
   abn             String?
+  // Stripe — link a real account to take card payments. Secret key is
+  // encrypted at the app layer; the publishable key is safe to expose to the
+  // browser (Stripe Elements needs it). Blank = payments run in offline stub
+  // mode.
+  stripeSecretKeyEncrypted String? @map("stripe_secret_key_encrypted")
+  stripePublishableKey     String? @map("stripe_publishable_key")
   updatedAt       DateTime @updatedAt @map("updated_at")
 
   @@map("facility_settings")

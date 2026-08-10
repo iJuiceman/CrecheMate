@@ -7,6 +7,7 @@ import { JwtPayload } from "../auth/jwt-payload.interface";
 
 const SELECT = {
   id: true,
+  username: true,
   email: true,
   firstName: true,
   lastName: true,
@@ -25,13 +26,14 @@ export class UsersService {
   }
 
   async create(dto: CreateStaffDto) {
-    const existing = await this.prisma.user.findUnique({ where: { email: dto.email.toLowerCase() } });
-    if (existing) throw new ConflictException("A staff member with this email already exists");
+    const existing = await this.prisma.user.findUnique({ where: { username: dto.username.toLowerCase() } });
+    if (existing) throw new ConflictException("A staff member with this username already exists");
     const tempPassword = dto.password ?? randomBytes(6).toString("base64url");
     const passwordHash = await bcrypt.hash(tempPassword, 10);
     const user = await this.prisma.user.create({
       data: {
-        email: dto.email.toLowerCase(),
+        username: dto.username.toLowerCase(),
+        email: dto.email?.toLowerCase() || null,
         passwordHash,
         firstName: dto.firstName,
         lastName: dto.lastName,
@@ -56,7 +58,8 @@ export class UsersService {
     if (id === actor.sub && dto.status === "suspended") {
       throw new BadRequestException("You can't suspend your own account");
     }
-    return this.prisma.user.update({ where: { id }, data: dto, select: SELECT });
+    const data = { ...dto, ...(dto.email !== undefined ? { email: dto.email?.toLowerCase() || null } : {}) };
+    return this.prisma.user.update({ where: { id }, data, select: SELECT });
   }
 
   async resetPassword(id: string) {

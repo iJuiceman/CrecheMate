@@ -6,7 +6,8 @@ import { api, clearToken, getToken, setToken } from "./api";
 
 export interface Staff {
   id: string;
-  email: string;
+  username: string;
+  email: string | null;
   firstName: string;
   lastName: string;
   role: "admin" | "educator";
@@ -15,7 +16,7 @@ export interface Staff {
 interface AuthValue {
   user: Staff | null;
   loading: boolean;
-  login: (email: string, password: string) => Promise<void>;
+  login: (username: string, password: string) => Promise<void>;
   setSession: (token: string, user: Staff) => void;
   logout: () => void;
 }
@@ -39,8 +40,8 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       .finally(() => setLoading(false));
   }, []);
 
-  const login = async (email: string, password: string) => {
-    const res = await api.post<{ accessToken: string; user: Staff }>("/auth/login", { email, password });
+  const login = async (username: string, password: string) => {
+    const res = await api.post<{ accessToken: string; user: Staff }>("/auth/login", { username, password });
     setToken(res.accessToken);
     setUser(res.user);
     router.push("/dashboard");

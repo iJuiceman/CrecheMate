@@ -85,6 +85,10 @@ export interface Settings {
   openTime: string;
   closeTime: string;
   abn: string | null;
+  // Payments — the secret key is never sent to the browser.
+  stripeConfigured: boolean;
+  stripePublishableKey: string | null;
+  paymentsTestMode: boolean;
 }
 
 export const money = (cents: number) => `$${(cents / 100).toFixed(2)}`;

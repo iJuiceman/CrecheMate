@@ -7,3 +7,6 @@ dist/
 *.log
 .DS_Store
 apps/api/generated/
+
+# TS incremental build cache
+*.tsbuildinfo

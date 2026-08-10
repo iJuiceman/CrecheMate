@@ -38,3 +38,13 @@ export class UpdateSettingsDto {
   @MaxLength(20)
   abn?: string;
 }
+
+export class LinkStripeDto {
+  @IsString()
+  @MaxLength(255)
+  secretKey: string;
+
+  @IsString()
+  @MaxLength(255)
+  publishableKey: string;
+}

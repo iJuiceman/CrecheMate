@@ -73,6 +73,76 @@ export default function SettingsPage() {
         {saved && <p className="rounded-lg bg-teal-light px-3 py-2 text-sm text-teal-dark">Saved.</p>}
         <button className="btn" onClick={save} disabled={busy}>{busy ? "Saving…" : "Save settings"}</button>
       </div>
+
+      <PaymentsSection settings={s} onChange={setS} />
+    </div>
+  );
+}
+
+function PaymentsSection({ settings, onChange }: { settings: Settings; onChange: (s: Settings) => void }) {
+  const [secretKey, setSecretKey] = useState("");
+  const [publishableKey, setPublishableKey] = useState("");
+  const [busy, setBusy] = useState(false);
+  const [err, setErr] = useState<string | null>(null);
+
+  const liveMode = settings.stripePublishableKey?.startsWith("pk_live_");
+
+  async function link() {
+    if (!secretKey || !publishableKey) return setErr("Enter both the secret and publishable keys.");
+    setBusy(true); setErr(null);
+    try {
+      const updated = await api.post<Settings>("/settings/stripe", { secretKey: secretKey.trim(), publishableKey: publishableKey.trim() });
+      onChange(updated);
+      setSecretKey(""); setPublishableKey("");
+    } catch (e) { setErr(e instanceof Error ? e.message : "Couldn't link Stripe."); }
+    finally { setBusy(false); }
+  }
+
+  async function unlink() {
+    setBusy(true); setErr(null);
+    try {
+      const updated = await api.del<Settings>("/settings/stripe");
+      onChange(updated);
+    } catch (e) { setErr(e instanceof Error ? e.message : "Couldn't unlink Stripe."); }
+    finally { setBusy(false); }
+  }
+
+  return (
+    <div className="card mt-4 max-w-lg space-y-4">
+      <div>
+        <h2 className="font-display text-lg font-bold text-ink">Payments — Stripe</h2>
+        <p className="mt-1 text-sm text-ink/60">Link your Stripe account to take real card payments for online fees. Find your keys in the Stripe Dashboard under Developers → API keys.</p>
+      </div>
+
+      {settings.stripeConfigured ? (
+        <div className="space-y-3">
+          <div className="flex items-center gap-2">
+            <span className="rounded-full bg-teal-light px-2 py-0.5 text-xs font-semibold text-teal-dark">Linked</span>
+            <span className={`rounded-full px-2 py-0.5 text-xs font-semibold ${liveMode ? "bg-coral/10 text-coral" : "bg-sand text-ink/60"}`}>{liveMode ? "LIVE — real charges" : "Test keys"}</span>
+          </div>
+          <p className="text-sm text-ink/60">Publishable key: <span className="font-mono text-ink/80">{settings.stripePublishableKey}</span></p>
+          <p className="text-xs text-ink/50">The secret key is stored encrypted and never shown again. Unlinking reverts online payments to test-mode stubs.</p>
+          {err && <p className="rounded-lg bg-coral/10 px-3 py-2 text-sm text-coral">{err}</p>}
+          <button className="btn-secondary" onClick={unlink} disabled={busy}>{busy ? "Working…" : "Unlink Stripe account"}</button>
+        </div>
+      ) : (
+        <div className="space-y-3">
+          <div className="rounded-lg bg-sand px-3 py-2 text-xs text-ink/60">
+            Not linked — online card payments run in <b>test mode</b> (auto-succeed stubs, no real money moves).
+          </div>
+          <div>
+            <label className="label">Secret key (sk_…)</label>
+            <input className="field font-mono" placeholder="sk_live_… or sk_test_…" value={secretKey} onChange={(e) => setSecretKey(e.target.value)} autoComplete="off" spellCheck={false} />
+          </div>
+          <div>
+            <label className="label">Publishable key (pk_…)</label>
+            <input className="field font-mono" placeholder="pk_live_… or pk_test_…" value={publishableKey} onChange={(e) => setPublishableKey(e.target.value)} autoComplete="off" spellCheck={false} />
+          </div>
+          <p className="text-xs text-ink/50">Both keys must be from the same mode. We verify the secret key with Stripe before saving.</p>
+          {err && <p className="rounded-lg bg-coral/10 px-3 py-2 text-sm text-coral">{err}</p>}
+          <button className="btn" onClick={link} disabled={busy}>{busy ? "Verifying…" : "Link Stripe account"}</button>
+        </div>
+      )}
     </div>
   );
 }

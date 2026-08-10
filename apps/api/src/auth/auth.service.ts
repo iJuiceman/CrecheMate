@@ -6,7 +6,7 @@ import { JwtPayload } from "./jwt-payload.interface";
 import { LoginDto, RegisterFirstAdminDto } from "./dto";
 
 // A constant bcrypt hash to compare against when the account isn't found, so
-// login timing doesn't reveal whether an email is registered.
+// login timing doesn't reveal whether a username is registered.
 const DUMMY_HASH = bcrypt.hashSync("account-enumeration-timing-equalizer", 10);
 
 @Injectable()
@@ -25,7 +25,8 @@ export class AuthService {
     const passwordHash = await bcrypt.hash(dto.password, 10);
     const user = await this.prisma.user.create({
       data: {
-        email: dto.email.toLowerCase(),
+        username: dto.username.toLowerCase(),
+        email: dto.email?.toLowerCase() || null,
         passwordHash,
         firstName: dto.firstName,
         lastName: dto.lastName,
@@ -40,9 +41,9 @@ export class AuthService {
   }
 
   async login(dto: LoginDto) {
-    const user = await this.prisma.user.findUnique({ where: { email: dto.email.toLowerCase() } });
+    const user = await this.prisma.user.findUnique({ where: { username: dto.username.toLowerCase() } });
     const ok = await bcrypt.compare(dto.password, user?.passwordHash ?? DUMMY_HASH);
-    if (!user || !ok) throw new UnauthorizedException("Invalid email or password");
+    if (!user || !ok) throw new UnauthorizedException("Invalid username or password");
     if (user.status !== "active") throw new UnauthorizedException("Your account is suspended");
     await this.prisma.user.update({ where: { id: user.id }, data: { lastLoginAt: new Date() } });
     return this.issue(user);
@@ -51,18 +52,32 @@ export class AuthService {
   async me(payload: JwtPayload) {
     const user = await this.prisma.user.findUnique({
       where: { id: payload.sub },
-      select: { id: true, email: true, firstName: true, lastName: true, role: true },
+      select: { id: true, username: true, email: true, firstName: true, lastName: true, role: true },
     });
     if (!user) throw new UnauthorizedException();
     return user;
   }
 
-  private issue(user: { id: string; email: string; role: "admin" | "educator"; firstName: string; lastName: string }) {
-    const payload: JwtPayload = { sub: user.id, email: user.email, role: user.role };
+  private issue(user: {
+    id: string;
+    username: string;
+    email: string | null;
+    role: "admin" | "educator";
+    firstName: string;
+    lastName: string;
+  }) {
+    const payload: JwtPayload = { sub: user.id, username: user.username, role: user.role };
     const accessToken = this.jwt.sign(payload, { expiresIn: "12h" });
     return {
       accessToken,
-      user: { id: user.id, email: user.email, firstName: user.firstName, lastName: user.lastName, role: user.role },
+      user: {
+        id: user.id,
+        username: user.username,
+        email: user.email,
+        firstName: user.firstName,
+        lastName: user.lastName,
+        role: user.role,
+      },
     };
   }
 }

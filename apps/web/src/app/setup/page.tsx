@@ -10,6 +10,7 @@ export default function SetupPage() {
   const { setSession } = useAuth();
   const [firstName, setFirstName] = useState("");
   const [lastName, setLastName] = useState("");
+  const [username, setUsername] = useState("");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [error, setError] = useState<string | null>(null);
@@ -30,7 +31,8 @@ export default function SetupPage() {
       const res = await api.post<{ accessToken: string; user: Staff }>("/auth/register-first-admin", {
         firstName,
         lastName,
-        email,
+        username,
+        email: email || undefined,
         password,
       });
       setSession(res.accessToken, res.user);
@@ -61,8 +63,13 @@ export default function SetupPage() {
             </div>
           </div>
           <div>
-            <label className="label">Email</label>
-            <input type="email" className="field" value={email} onChange={(e) => setEmail(e.target.value)} required />
+            <label className="label">Username</label>
+            <input className="field" value={username} onChange={(e) => setUsername(e.target.value)} required autoCapitalize="none" spellCheck={false} placeholder="e.g. jsmith" />
+            <p className="mt-1 text-xs text-ink/50">3–40 characters — letters, numbers, and . _ -</p>
+          </div>
+          <div>
+            <label className="label">Email <span className="font-normal text-ink/40">(optional — for receipts/records)</span></label>
+            <input type="email" className="field" value={email} onChange={(e) => setEmail(e.target.value)} />
           </div>
           <div>
             <label className="label">Password (min 8 characters)</label>

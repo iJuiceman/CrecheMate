@@ -3,6 +3,14 @@
 import { useCallback, useEffect, useState } from "react";
 import { api } from "@/lib/api";
 import { Attendance, Dashboard, Guardian, Roster, money } from "@/lib/types";
+import CardPaymentModal from "./CardPaymentModal";
+
+interface PaymentIntentResponse {
+  id: string;
+  clientSecret: string;
+  testMode: boolean;
+  publishableKey: string | null;
+}
 
 function timeSince(iso: string): string {
   const mins = Math.floor((Date.now() - new Date(iso).getTime()) / 60000);
@@ -176,23 +184,39 @@ function PayBadge({ a }: { a: Attendance }) {
 
 function PaymentRow({ attendanceId, feeCents, busyKey, onDone, onBusy }: { attendanceId: string; feeCents: number; busyKey: string | null; onDone: () => void; onBusy: (k: string | null) => void }) {
   const [err, setErr] = useState<string | null>(null);
+  // Set when a real Stripe intent needs the card collected in Elements.
+  const [card, setCard] = useState<{ clientSecret: string; publishableKey: string; intentId: string } | null>(null);
+
+  async function record(body: Record<string, unknown>) {
+    await api.post(`/attendance/${attendanceId}/payment`, body);
+    onDone();
+  }
+
   async function pay(method: "cash" | "card" | "eftpos" | "online") {
     onBusy(attendanceId);
     setErr(null);
     try {
       if (method === "online") {
-        const pi = await api.post<{ id: string }>(`/attendance/${attendanceId}/payment-intent`);
-        await api.post(`/attendance/${attendanceId}/payment`, { method: "online", stripePaymentIntentId: pi.id });
+        const pi = await api.post<PaymentIntentResponse>(`/attendance/${attendanceId}/payment-intent`);
+        if (pi.testMode || !pi.publishableKey) {
+          // No linked Stripe account — the stub intent is already "succeeded".
+          await record({ method: "online", stripePaymentIntentId: pi.id });
+        } else {
+          // Real account — collect + confirm the card, then record on success.
+          setCard({ clientSecret: pi.clientSecret, publishableKey: pi.publishableKey, intentId: pi.id });
+          onBusy(null);
+          return;
+        }
       } else {
-        await api.post(`/attendance/${attendanceId}/payment`, { method });
+        await record({ method });
       }
-      onDone();
     } catch (e) {
       setErr(e instanceof Error ? e.message : "Payment failed.");
     } finally {
       onBusy(null);
     }
   }
+
   const disabled = busyKey === attendanceId;
   return (
     <div className="mt-3">
@@ -204,6 +228,23 @@ function PaymentRow({ attendanceId, feeCents, busyKey, onDone, onBusy }: { atten
         <button className="rounded-lg px-3 py-1.5 text-xs text-ink/50 hover:text-coral" disabled={disabled} onClick={() => { onBusy(attendanceId); api.post(`/attendance/${attendanceId}/waive`).then(onDone).finally(() => onBusy(null)); }}>Waive</button>
       </div>
       {err && <p className="mt-1 text-xs text-coral">{err}</p>}
+      {card && (
+        <CardPaymentModal
+          clientSecret={card.clientSecret}
+          publishableKey={card.publishableKey}
+          feeCents={feeCents}
+          onClose={() => setCard(null)}
+          onConfirmed={async () => {
+            try {
+              await record({ method: "online", stripePaymentIntentId: card.intentId });
+            } catch (e) {
+              setErr(e instanceof Error ? e.message : "Charged, but recording failed — refresh.");
+            } finally {
+              setCard(null);
+            }
+          }}
+        />
+      )}
     </div>
   );
 }

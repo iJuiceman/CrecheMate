@@ -14,8 +14,9 @@ async function bootstrap() {
     new ValidationPipe({ whitelist: true, forbidNonWhitelisted: true, transform: true }),
   );
   app.enableShutdownHooks();
-  await app.listen(5000);
+  const port = Number(process.env.PORT) || 5000;
+  await app.listen(port);
   // eslint-disable-next-line no-console
-  console.log("CrecheMate API listening on :5000");
+  console.log(`CrecheMate API listening on :${port}`);
 }
 void bootstrap();

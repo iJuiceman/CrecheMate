@@ -12,7 +12,8 @@ contact** details, needs no court booking, and runs on its own.
 
 ## What's built
 
-- **Staff sign-in with roles.** Individual accounts; **admin** manages
+- **Staff sign-in with roles.** Individual accounts signed in by **username**
+  (email is optional, kept for receipts/records only); **admin** manages
   settings and staff, **educator** does day-to-day work. First run shows a
   one-time setup screen to create the first admin (no default password ever
   ships). Passwords are bcrypt-hashed; a suspended account can't sign in; the
@@ -38,11 +39,14 @@ contact** details, needs no court booking, and runs on its own.
 - **Fees & payment.** A per-child **hourly rate** (site-configurable) is
   charged pro-rata; the fee is finalised at check-out from the actual time in
   care. Take payment at the desk as **cash / card / EFTPOS**, or an **online
-  card** payment via Stripe. Runs in **payments test mode** by default
-  (online payments auto-succeed with a stub, so the whole flow works with no
-  Stripe account) — set a real `sk_live_` key and `PAYMENTS_TEST_MODE=false`
-  to take real cards. Unpaid checkouts are tracked as outstanding; a fee can
-  also be waived.
+  card** payment via Stripe. An admin **links a Stripe account in-app** under
+  Settings → Payments (paste the `sk_`/`pk_` keys; the secret is verified with
+  Stripe then stored encrypted) — after that, online payments create a real
+  PaymentIntent and the desk collects the card via Stripe Elements, with the
+  fee marked paid only once Stripe confirms the charge. With no account linked,
+  online payments run in **test mode** (auto-succeed stub, so the whole flow
+  works with no Stripe account). Unpaid checkouts are tracked as outstanding; a
+  fee can also be waived.
 - **Settings** (admin): service name, capacity, hourly rate, opening hours,
   timezone, ABN.
 

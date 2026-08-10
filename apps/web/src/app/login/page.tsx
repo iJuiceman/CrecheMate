@@ -5,7 +5,7 @@ import { useAuth } from "@/lib/auth";
 
 export default function LoginPage() {
   const { login } = useAuth();
-  const [email, setEmail] = useState("");
+  const [username, setUsername] = useState("");
   const [password, setPassword] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
@@ -15,7 +15,7 @@ export default function LoginPage() {
     setBusy(true);
     setError(null);
     try {
-      await login(email, password);
+      await login(username, password);
     } catch (err) {
       setError(err instanceof Error ? err.message : "Couldn't sign in.");
     } finally {
@@ -33,8 +33,8 @@ export default function LoginPage() {
         </div>
         <form onSubmit={submit} className="card space-y-4">
           <div>
-            <label className="label">Email</label>
-            <input type="email" className="field" value={email} onChange={(e) => setEmail(e.target.value)} required autoComplete="email" />
+            <label className="label">Username</label>
+            <input type="text" className="field" value={username} onChange={(e) => setUsername(e.target.value)} required autoComplete="username" autoCapitalize="none" spellCheck={false} />
           </div>
           <div>
             <label className="label">Password</label>

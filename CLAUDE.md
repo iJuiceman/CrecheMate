@@ -9,7 +9,8 @@ Manages families (guardian + emergency contacts), children (medical notes
 encrypted, age computed from birth month/year), attendance as **both**
 pre-booked sessions and walk-in drop-ins with capacity enforcement, check-in/
 out, and per-child hourly fees paid at the desk (cash/card/eftpos or online
-card via Stripe). Individual staff logins with `admin` / `educator` roles.
+card via Stripe). Individual staff logins by **username** (email is optional,
+kept for receipts/records only) with `admin` / `educator` roles.
 
 ## Stack & layout
 
@@ -23,20 +24,30 @@ card via Stripe). Individual staff logins with `admin` / `educator` roles.
 - Single facility: no org scoping / RLS. Auth is JWT + roles (RolesGuard).
   Every route needs a token unless `@Public()` (setup-status, first-admin,
   login). `@Roles("admin")` gates settings-write and all of `/staff`.
-- First admin is created through the app's one-time setup screen
+- Staff log in with a **username** (3–40 chars, `a-z0-9._-`), stored/compared
+  lower-case. Email is optional and never used for login. The first admin is
+  created through the app's one-time setup screen
   (`POST /auth/register-first-admin`, allowed only when zero users exist) —
   no default password is ever seeded. `prisma db seed` only creates default
   FacilitySettings.
+- Facility settings are a DB-enforced singleton (unique `singleton` column) —
+  never assume `findFirst` uniqueness by convention alone.
 - Children's medical notes are encrypted at the app layer
   (`common/encryption.util.ts`, `CHILD_DATA_ENCRYPTION_KEY`, AES-256-GCM).
   Never store them plaintext.
 - Age is always computed on read (`common/age.util.ts`) from birthMonth/
   birthYear — never stored, never stale.
-- Payments run in **test mode** (honest stub, auto-succeed) unless a real
-  `sk_live_` key is set and `PAYMENTS_TEST_MODE=false`. The stub never
-  pretends a real charge happened. Real Stripe SDK path is a TODO in
-  `payments/payments.service.ts` when going live (needs Stripe Elements on the
-  web for a real card form).
+- Payments use the real Stripe SDK. An admin links a Stripe account in-app
+  under **Settings → Payments** (`POST /settings/stripe`); the secret key is
+  validated against Stripe then stored **encrypted** (same AES-256-GCM app key
+  as medical notes), the publishable key is stored plain (the browser needs it
+  for Stripe Elements). Online payments then create a real PaymentIntent, the
+  desk collects the card via Elements (`dashboard/CardPaymentModal.tsx`), and
+  the fee is only marked paid after `assertSucceeded` verifies the intent with
+  Stripe. With no linked account (and no `STRIPE_SECRET_KEY` env fallback),
+  online payments fall back to **test mode**: an honest auto-succeed stub that
+  never pretends a real charge happened. `PAYMENTS_TEST_MODE=true` forces the
+  env-key fallback off.
 - Fee = pro-rata hours × `hourlyRateCents`, finalised at check-out.
 
 ## Dev workflow
@@ -56,7 +67,6 @@ New Prisma models: add a migration; the API container runs
 
 ## Not yet built (backlog)
 
-- Real Stripe SDK + web card form (Elements) for live online payments.
 - Receipts/PDF, reporting/exports, daily attendance sheet.
 - Parent-facing portal (currently staff-operated only).
 - QR check-in, photos, incident/accident logs, immunisation records.
