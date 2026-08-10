@@ -39,6 +39,13 @@ export default function FamilyDetail({ params }: { params: { id: string } }) {
         {(family.addressLine || family.suburb) && (
           <p className="text-sm text-ink/60">{[family.addressLine, family.suburb, family.postcode].filter(Boolean).join(", ")}</p>
         )}
+        <div className="mt-3 border-t border-line pt-3">
+          {family.waiverSigned ? (
+            <WaiverStatus family={family} />
+          ) : (
+            <p className="text-sm text-ink/50">Waiver: <span className="text-ink/70">not signed</span> (family added by staff)</p>
+          )}
+        </div>
       </div>
 
       {/* Children */}
@@ -54,6 +61,26 @@ export default function FamilyDetail({ params }: { params: { id: string } }) {
 
       {editGuardian && <GuardianForm family={family} onClose={() => setEditGuardian(false)} onSaved={() => { setEditGuardian(false); load(); }} />}
       {addChild && <ChildForm familyId={family.id} onClose={() => setAddChild(false)} onSaved={() => { setAddChild(false); load(); }} />}
+    </div>
+  );
+}
+
+function WaiverStatus({ family }: { family: Guardian }) {
+  const [show, setShow] = useState(false);
+  const when = family.waiverAcceptedAt ? new Date(family.waiverAcceptedAt).toLocaleDateString("en-AU", { day: "numeric", month: "short", year: "numeric" }) : "";
+  return (
+    <div>
+      <p className="text-sm text-ink/70">
+        <span className="mr-1 rounded-full bg-teal-light px-2 py-0.5 text-xs font-semibold text-teal-dark">Waiver signed</span>
+        {when}{family.waiverVersion ? ` · v${family.waiverVersion}` : ""}
+        {family.waiverSignature && (
+          <button className="ml-2 text-xs font-medium text-teal hover:underline" onClick={() => setShow((v) => !v)}>{show ? "Hide" : "View"} signature</button>
+        )}
+      </p>
+      {show && family.waiverSignature && (
+        // eslint-disable-next-line @next/next/no-img-element
+        <img src={family.waiverSignature} alt="Parent signature" className="mt-2 h-28 rounded-lg border border-line bg-white" />
+      )}
     </div>
   );
 }

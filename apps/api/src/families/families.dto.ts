@@ -13,6 +13,7 @@ import {
   MinLength,
   ValidateNested,
 } from "class-validator";
+import { IsAuPhone } from "../common/phone.validator";
 
 export class EmergencyContactDto {
   @IsString()
@@ -26,8 +27,8 @@ export class EmergencyContactDto {
   relationship?: string;
 
   @IsString()
-  @MinLength(3)
   @MaxLength(40)
+  @IsAuPhone()
   phone: string;
 
   @IsOptional()
@@ -88,8 +89,8 @@ export class GuardianInputDto {
   relationship?: string;
 
   @IsString()
-  @MinLength(3)
   @MaxLength(40)
+  @IsAuPhone()
   phone: string;
 
   @IsOptional()

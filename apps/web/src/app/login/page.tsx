@@ -45,6 +45,9 @@ export default function LoginPage() {
             {busy ? "Signing in…" : "Sign in"}
           </button>
         </form>
+        <p className="mt-4 text-center text-sm text-ink/50">
+          Registering a child? <a href="/intake" className="font-medium text-teal hover:underline">Open the parent form</a>
+        </p>
       </div>
     </div>
   );

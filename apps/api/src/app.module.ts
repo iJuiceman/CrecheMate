@@ -9,6 +9,7 @@ import { FamiliesModule } from "./families/families.module";
 import { AttendanceModule } from "./attendance/attendance.module";
 import { SettingsModule } from "./settings/settings.module";
 import { PaymentsModule } from "./payments/payments.module";
+import { IntakeModule } from "./intake/intake.module";
 
 @Module({
   imports: [
@@ -20,6 +21,7 @@ import { PaymentsModule } from "./payments/payments.module";
     UsersModule,
     FamiliesModule,
     AttendanceModule,
+    IntakeModule,
   ],
   providers: [
     // Every route requires a signed-in staff member unless marked @Public().

@@ -37,6 +37,11 @@ export class UpdateSettingsDto {
   @IsString()
   @MaxLength(20)
   abn?: string;
+
+  @IsOptional()
+  @IsString()
+  @MaxLength(20000)
+  waiverText?: string;
 }
 
 export class LinkStripeDto {

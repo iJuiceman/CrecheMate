@@ -38,7 +38,13 @@ export class SettingsService {
 
   async update(dto: UpdateSettingsDto) {
     const current = await this.get();
-    await this.prisma.facilitySettings.update({ where: { id: current.id }, data: dto });
+    // Bump the waiver version whenever its wording actually changes, so each
+    // parent's signature stays tied to the text they saw.
+    const waiverChanged = dto.waiverText !== undefined && dto.waiverText !== (current.waiverText ?? "");
+    await this.prisma.facilitySettings.update({
+      where: { id: current.id },
+      data: { ...dto, ...(waiverChanged ? { waiverVersion: current.waiverVersion + 1 } : {}) },
+    });
     return this.publicView();
   }
 

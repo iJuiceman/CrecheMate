@@ -47,6 +47,12 @@ model Guardian {
   suburb       String?
   postcode     String?
   notes        String?
+  // Waiver acceptance captured at parent self-registration. The signature image
+  // (a data URL) is personal data, so it's encrypted at the app layer like
+  // medical notes. Null when a family was added by staff without a signature.
+  waiverSignatureEncrypted String?   @map("waiver_signature_encrypted")
+  waiverAcceptedAt         DateTime? @map("waiver_accepted_at")
+  waiverVersion            Int?      @map("waiver_version")
   createdAt    DateTime @default(now()) @map("created_at")
 
   children Child[]
@@ -159,6 +165,11 @@ model FacilitySettings {
   openTime        String   @default("07:00") @map("open_time")
   closeTime       String   @default("18:00") @map("close_time")
   abn             String?
+  // Waiver shown on the parent self-registration form. Editable by an admin;
+  // the version bumps whenever the text changes so we can record which wording
+  // each parent actually signed.
+  waiverText      String?  @map("waiver_text")
+  waiverVersion   Int      @default(1) @map("waiver_version")
   // Stripe — link a real account to take card payments. Secret key is
   // encrypted at the app layer; the publishable key is safe to expose to the
   // browser (Stripe Elements needs it). Blank = payments run in offline stub

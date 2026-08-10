@@ -29,6 +29,10 @@ export interface Guardian {
   suburb: string | null;
   postcode: string | null;
   notes: string | null;
+  waiverSigned: boolean;
+  waiverAcceptedAt: string | null;
+  waiverVersion: number | null;
+  waiverSignature: string | null; // decrypted, detail view only
   children: ChildFull[];
 }
 
@@ -85,6 +89,8 @@ export interface Settings {
   openTime: string;
   closeTime: string;
   abn: string | null;
+  waiverText: string | null;
+  waiverVersion: number;
   // Payments — the secret key is never sent to the browser.
   stripeConfigured: boolean;
   stripePublishableKey: string | null;

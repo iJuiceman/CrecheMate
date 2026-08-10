@@ -28,7 +28,7 @@ export class FamiliesService {
     };
   }
 
-  private serializeGuardian(g: any) {
+  private serializeGuardian(g: any, includeSignature = false) {
     return {
       id: g.id,
       firstName: g.firstName,
@@ -40,6 +40,12 @@ export class FamiliesService {
       suburb: g.suburb,
       postcode: g.postcode,
       notes: g.notes,
+      // Waiver status — metadata is cheap; the signature image is only decrypted
+      // and returned on the family detail view (get), never in list responses.
+      waiverSigned: !!g.waiverAcceptedAt,
+      waiverAcceptedAt: g.waiverAcceptedAt ?? null,
+      waiverVersion: g.waiverVersion ?? null,
+      waiverSignature: includeSignature && g.waiverSignatureEncrypted ? decryptField(g.waiverSignatureEncrypted) : null,
       children: (g.children ?? []).map((c: any) => this.serializeChild(c)),
     };
   }
@@ -71,7 +77,7 @@ export class FamiliesService {
       include: { children: { where: { active: true }, include: { emergencyContacts: true } } },
     });
     if (!g) throw new NotFoundException("Family not found");
-    return this.serializeGuardian(g);
+    return this.serializeGuardian(g, true);
   }
 
   async createFamily(dto: CreateFamilyDto) {

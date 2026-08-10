@@ -18,8 +18,18 @@ contact** details, needs no court booking, and runs on its own.
   one-time setup screen to create the first admin (no default password ever
   ships). Passwords are bcrypt-hashed; a suspended account can't sign in; the
   last active admin can't be locked out.
-- **Families & children.** Register a family in one step — the parent/guardian
-  (name, relationship, phone, email, address) plus their first child. Each
+- **Parent self-registration (iPad kiosk).** Hand a parent an iPad at
+  `/intake` and they register themselves: their details (name, relationship,
+  phone, optional email — no address), the child with **birth month/year
+  dropdowns**, allergies/medical needs, and emergency contacts. They then read
+  the centre's **waiver** and **sign it with their finger** on a touch signature
+  pad. Phone numbers are validated as Australian. The signature is stored
+  **encrypted**, tied to the exact waiver version signed; staff can see the
+  signed status (and view the signature) on the family page. Admins edit the
+  waiver wording under Settings.
+- **Families & children.** Staff can also register a family in one step — the
+  parent/guardian (name, relationship, phone, email, address) plus their first
+  child. Each
   child carries **birth month + year** (the age is computed, never stale),
   **allergies/medical requirements encrypted at rest** (AES-256-GCM), and one
   or more **emergency contacts** (name, relationship, phone, and whether

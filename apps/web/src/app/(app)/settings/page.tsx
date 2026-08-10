@@ -28,6 +28,7 @@ export default function SettingsPage() {
         closeTime: s.closeTime,
         timezone: s.timezone,
         abn: s.abn || undefined,
+        waiverText: s.waiverText ?? undefined,
       });
       setS(updated);
       setSaved(true);
@@ -72,6 +73,30 @@ export default function SettingsPage() {
         {error && <p className="rounded-lg bg-coral/10 px-3 py-2 text-sm text-coral">{error}</p>}
         {saved && <p className="rounded-lg bg-teal-light px-3 py-2 text-sm text-teal-dark">Saved.</p>}
         <button className="btn" onClick={save} disabled={busy}>{busy ? "Saving…" : "Save settings"}</button>
+      </div>
+
+      {/* Parent registration + waiver */}
+      <div className="card mt-4 max-w-lg space-y-4">
+        <div>
+          <h2 className="font-display text-lg font-bold text-ink">Parent registration & waiver</h2>
+          <p className="mt-1 text-sm text-ink/60">Parents self-register on an iPad and sign this waiver with their finger. Open the kiosk form at:</p>
+          <p className="mt-2 rounded-lg bg-sand px-3 py-2 font-mono text-sm text-ink/80">
+            {typeof window !== "undefined" ? `${window.location.origin}/intake` : "/intake"}
+          </p>
+          <a href="/intake" target="_blank" rel="noreferrer" className="mt-2 inline-block text-sm font-medium text-teal hover:underline">Open the parent form ↗</a>
+        </div>
+        <div>
+          <label className="label">Waiver text <span className="font-normal text-ink/40">(shown to parents · v{s.waiverVersion})</span></label>
+          <textarea
+            className="field font-sans"
+            rows={12}
+            value={s.waiverText ?? ""}
+            placeholder="Leave blank to use the built-in default waiver."
+            onChange={(e) => setS({ ...s, waiverText: e.target.value })}
+          />
+          <p className="mt-1 text-xs text-ink/50">Editing the wording bumps the version, so each parent&apos;s signature stays tied to the exact text they signed. Have your own waiver reviewed before going live.</p>
+        </div>
+        <button className="btn" onClick={save} disabled={busy}>{busy ? "Saving…" : "Save waiver"}</button>
       </div>
 
       <PaymentsSection settings={s} onChange={setS} />

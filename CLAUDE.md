@@ -10,7 +10,9 @@ encrypted, age computed from birth month/year), attendance as **both**
 pre-booked sessions and walk-in drop-ins with capacity enforcement, check-in/
 out, and per-child hourly fees paid at the desk (cash/card/eftpos or online
 card via Stripe). Individual staff logins by **username** (email is optional,
-kept for receipts/records only) with `admin` / `educator` roles.
+kept for receipts/records only) with `admin` / `educator` roles. Parents can
+**self-register on an iPad kiosk** (`/intake`) — their details + child + emergency
+contacts, then read and sign a waiver with their finger.
 
 ## Stack & layout
 
@@ -32,6 +34,15 @@ kept for receipts/records only) with `admin` / `educator` roles.
   FacilitySettings.
 - Facility settings are a DB-enforced singleton (unique `singleton` column) —
   never assume `findFirst` uniqueness by convention alone.
+- Parent self-registration (`intake` module) is **public** (`@Public()` on
+  `GET /intake/info` + `POST /intake`) — it's an iPad kiosk handed to a parent
+  with no account. The waiver **signature** (a PNG data URL) is personal data,
+  so it's encrypted at rest like medical notes. The waiver text lives on
+  FacilitySettings; its `waiverVersion` bumps on every wording change so each
+  guardian's `waiverVersion` records exactly what they signed.
+- Phone numbers are validated as Australian (`common/phone.validator.ts`,
+  `IsAuPhone`) on both the intake and staff family forms; the web mirrors the
+  rule in `lib/phone.ts`.
 - Children's medical notes are encrypted at the app layer
   (`common/encryption.util.ts`, `CHILD_DATA_ENCRYPTION_KEY`, AES-256-GCM).
   Never store them plaintext.
@@ -68,5 +79,6 @@ New Prisma models: add a migration; the API container runs
 ## Not yet built (backlog)
 
 - Receipts/PDF, reporting/exports, daily attendance sheet.
-- Parent-facing portal (currently staff-operated only).
+- Parent-facing portal beyond self-registration (bookings/payments are still
+  staff-operated).
 - QR check-in, photos, incident/accident logs, immunisation records.
