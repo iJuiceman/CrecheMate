@@ -1,4 +1,4 @@
-import { IsInt, IsOptional, IsString, Matches, Max, MaxLength, Min } from "class-validator";
+import { ArrayMaxSize, IsArray, IsInt, IsOptional, IsString, Matches, Max, MaxLength, Min } from "class-validator";
 
 const TIME = /^([01]\d|2[0-3]):[0-5]\d$/;
 
@@ -42,6 +42,13 @@ export class UpdateSettingsDto {
   @IsString()
   @MaxLength(20000)
   waiverText?: string;
+
+  @IsOptional()
+  @IsArray()
+  @ArrayMaxSize(100)
+  @IsString({ each: true })
+  @MaxLength(60, { each: true })
+  courts?: string[];
 }
 
 export class LinkStripeDto {

@@ -29,6 +29,7 @@ export default function SettingsPage() {
         timezone: s.timezone,
         abn: s.abn || undefined,
         waiverText: s.waiverText ?? undefined,
+        courts: s.courts,
       });
       setS(updated);
       setSaved(true);
@@ -69,6 +70,16 @@ export default function SettingsPage() {
         <div className="grid grid-cols-2 gap-3">
           <div><label className="label">Timezone</label><input className="field" value={s.timezone} onChange={(e) => setS({ ...s, timezone: e.target.value })} /></div>
           <div><label className="label">ABN (for receipts, optional)</label><input className="field" value={s.abn ?? ""} onChange={(e) => setS({ ...s, abn: e.target.value })} /></div>
+        </div>
+        <div>
+          <label className="label">Courts</label>
+          <input
+            className="field"
+            placeholder="e.g. Court 1, Court 2, Show Court"
+            value={(s.courts ?? []).join(", ")}
+            onChange={(e) => setS({ ...s, courts: e.target.value.split(",").map((c) => c.trim()).filter(Boolean) })}
+          />
+          <p className="mt-1 text-xs text-ink/50">Comma-separated. These appear as a pick-list when checking a child in, so staff can record which court the parent is on. Leave blank to type courts free-form.</p>
         </div>
         {error && <p className="rounded-lg bg-coral/10 px-3 py-2 text-sm text-coral">{error}</p>}
         {saved && <p className="rounded-lg bg-teal-light px-3 py-2 text-sm text-teal-dark">Saved.</p>}

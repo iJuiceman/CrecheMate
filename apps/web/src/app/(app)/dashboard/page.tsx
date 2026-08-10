@@ -4,6 +4,7 @@ import { useCallback, useEffect, useState } from "react";
 import { api } from "@/lib/api";
 import { Attendance, Dashboard, Guardian, Roster, money } from "@/lib/types";
 import StripeCardModal from "@/components/StripeCardModal";
+import CourtInput from "@/components/CourtInput";
 
 interface PaymentIntentResponse {
   id: string;
@@ -80,20 +81,7 @@ export default function DashboardPage() {
         {roster?.inCare.length ? (
           <div className="grid gap-3 md:grid-cols-2">
             {roster.inCare.map((a) => (
-              <div key={a.id} className="card">
-                <ChildHeader a={a} />
-                <div className="mt-2 flex items-center justify-between text-sm text-ink/60">
-                  <span>In {a.checkInAt ? timeSince(a.checkInAt) : "—"} · since {fmtTime(a.checkInAt)}</span>
-                  <span className="tabular-nums">~{money(estFee(a.checkInAt, rate))}</span>
-                </div>
-                <button
-                  className="btn mt-3 w-full"
-                  disabled={busy === a.id}
-                  onClick={() => act(a.id, () => api.post(`/attendance/${a.id}/check-out`, {}))}
-                >
-                  {busy === a.id ? "…" : "Check out"}
-                </button>
-              </div>
+              <InCareCard key={a.id} a={a} courts={roster.courts} rate={rate} busy={busy} act={act} />
             ))}
           </div>
         ) : (
@@ -106,14 +94,7 @@ export default function DashboardPage() {
         <Section title="Expected today" count={roster.expected.length}>
           <div className="grid gap-3 md:grid-cols-2">
             {roster.expected.map((a) => (
-              <div key={a.id} className="card">
-                <ChildHeader a={a} />
-                <p className="mt-2 text-sm text-ink/60">Booked {fmtTime(a.scheduledStart)} – {fmtTime(a.scheduledEnd)}</p>
-                <div className="mt-3 flex gap-2">
-                  <button className="btn flex-1" disabled={busy === a.id} onClick={() => act(a.id, () => api.post(`/attendance/${a.id}/check-in`, {}))}>Check in</button>
-                  <button className="btn-secondary" disabled={busy === a.id} onClick={() => act(a.id, () => api.post(`/attendance/${a.id}/cancel`, {}))}>Cancel</button>
-                </div>
-              </div>
+              <ExpectedCard key={a.id} a={a} courts={roster.courts} busy={busy} act={act} />
             ))}
           </div>
         </Section>
@@ -142,7 +123,7 @@ export default function DashboardPage() {
         </Section>
       )}
 
-      {showCheckIn && <CheckInModal onClose={() => setShowCheckIn(false)} onDone={() => { setShowCheckIn(false); load(); }} />}
+      {showCheckIn && <CheckInModal courts={roster?.courts ?? []} onClose={() => setShowCheckIn(false)} onDone={() => { setShowCheckIn(false); load(); }} />}
     </div>
   );
 }
@@ -151,6 +132,68 @@ function estFee(checkInAt: string | null, rate: number): number {
   if (!checkInAt) return 0;
   const hours = (Date.now() - new Date(checkInAt).getTime()) / 3_600_000;
   return Math.round(hours * rate);
+}
+
+type Act = (key: string, fn: () => Promise<unknown>) => Promise<void>;
+
+function InCareCard({ a, courts, rate, busy, act }: { a: Attendance; courts: string[]; rate: number; busy: string | null; act: Act }) {
+  const [editCourt, setEditCourt] = useState(false);
+  const [court, setCourt] = useState(a.court ?? "");
+  const disabled = busy === a.id;
+
+  async function saveCourt() {
+    await act(a.id, () => api.post(`/attendance/${a.id}/court`, { court: court.trim() || undefined }));
+    setEditCourt(false);
+  }
+
+  return (
+    <div className="card">
+      <ChildHeader a={a} />
+      {/* Court — where to find the parent. Prominent because it matters most. */}
+      <div className="mt-2 rounded-lg bg-teal-light/50 px-3 py-2">
+        {editCourt ? (
+          <div className="flex items-center gap-2">
+            <CourtInput value={court} onChange={setCourt} courts={courts} className="field py-1.5 text-sm" autoFocus />
+            <button className="btn px-3 py-1.5 text-xs" disabled={disabled} onClick={saveCourt}>Save</button>
+            <button className="text-xs text-ink/50 hover:underline" onClick={() => { setCourt(a.court ?? ""); setEditCourt(false); }}>Cancel</button>
+          </div>
+        ) : (
+          <div className="flex items-center justify-between">
+            <span className="text-sm font-semibold text-teal-dark">
+              📍 {a.court ? `On ${a.court}` : <span className="font-normal text-ink/50">No court set</span>}
+            </span>
+            <button className="text-xs font-medium text-teal hover:underline" onClick={() => setEditCourt(true)}>{a.court ? "Change" : "Set court"}</button>
+          </div>
+        )}
+      </div>
+      <div className="mt-2 flex items-center justify-between text-sm text-ink/60">
+        <span>In {a.checkInAt ? timeSince(a.checkInAt) : "—"} · since {fmtTime(a.checkInAt)}</span>
+        <span className="tabular-nums">~{money(estFee(a.checkInAt, rate))}</span>
+      </div>
+      <button className="btn mt-3 w-full" disabled={disabled} onClick={() => act(a.id, () => api.post(`/attendance/${a.id}/check-out`, {}))}>
+        {disabled ? "…" : "Check out"}
+      </button>
+    </div>
+  );
+}
+
+function ExpectedCard({ a, courts, busy, act }: { a: Attendance; courts: string[]; busy: string | null; act: Act }) {
+  const [court, setCourt] = useState(a.court ?? "");
+  const disabled = busy === a.id;
+  return (
+    <div className="card">
+      <ChildHeader a={a} />
+      <p className="mt-2 text-sm text-ink/60">Booked {fmtTime(a.scheduledStart)} – {fmtTime(a.scheduledEnd)}</p>
+      <div className="mt-2">
+        <label className="label">Court (where the parent will be)</label>
+        <CourtInput value={court} onChange={setCourt} courts={courts} className="field py-1.5 text-sm" />
+      </div>
+      <div className="mt-3 flex gap-2">
+        <button className="btn flex-1" disabled={disabled} onClick={() => act(a.id, () => api.post(`/attendance/${a.id}/check-in`, { court: court.trim() || undefined }))}>Check in</button>
+        <button className="btn-secondary" disabled={disabled} onClick={() => act(a.id, () => api.post(`/attendance/${a.id}/cancel`, {}))}>Cancel</button>
+      </div>
+    </div>
+  );
 }
 
 function ChildHeader({ a }: { a: Attendance }) {
@@ -249,11 +292,12 @@ function PaymentRow({ attendanceId, feeCents, busyKey, onDone, onBusy }: { atten
   );
 }
 
-function CheckInModal({ onClose, onDone }: { onClose: () => void; onDone: () => void }) {
+function CheckInModal({ courts, onClose, onDone }: { courts: string[]; onClose: () => void; onDone: () => void }) {
   const [q, setQ] = useState("");
   const [results, setResults] = useState<Guardian[]>([]);
   const [busy, setBusy] = useState<string | null>(null);
   const [err, setErr] = useState<string | null>(null);
+  const [court, setCourt] = useState("");
 
   useEffect(() => {
     const t = setTimeout(() => {
@@ -266,7 +310,7 @@ function CheckInModal({ onClose, onDone }: { onClose: () => void; onDone: () => 
     setBusy(childId);
     setErr(null);
     try {
-      await api.post("/attendance/drop-in", { childId });
+      await api.post("/attendance/drop-in", { childId, court: court.trim() || undefined });
       onDone();
     } catch (e) {
       setErr(e instanceof Error ? e.message : "Couldn't check in.");
@@ -278,9 +322,13 @@ function CheckInModal({ onClose, onDone }: { onClose: () => void; onDone: () => 
     <div className="fixed inset-0 z-50 grid place-items-center bg-ink/30 p-4" onClick={onClose}>
       <div className="w-full max-w-lg rounded-card bg-white p-5 shadow-xl" onClick={(e) => e.stopPropagation()}>
         <h2 className="font-display text-lg font-bold text-ink">Check a child in</h2>
+        <div className="mt-3">
+          <label className="label">Court (where the parent will be)</label>
+          <CourtInput value={court} onChange={setCourt} courts={courts} />
+        </div>
         <input autoFocus className="field mt-3" placeholder="Search by child or parent name / phone…" value={q} onChange={(e) => setQ(e.target.value)} />
         {err && <p className="mt-2 text-sm text-coral">{err}</p>}
-        <div className="mt-3 max-h-80 space-y-2 overflow-y-auto">
+        <div className="mt-3 max-h-72 space-y-2 overflow-y-auto">
           {results.flatMap((g) => g.children.map((c) => (
             <div key={c.id} className="flex items-center justify-between rounded-lg border border-line px-3 py-2">
               <div>

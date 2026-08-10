@@ -64,6 +64,7 @@ export class AttendanceService {
       scheduledEnd: a.scheduledEnd,
       checkInAt: a.checkInAt,
       checkOutAt: a.checkOutAt,
+      court: a.court,
       feeCents: a.feeCents,
       paymentStatus: a.paymentStatus,
       paymentMethod: a.paymentMethod,
@@ -107,6 +108,7 @@ export class AttendanceService {
       capacity: f.capacity,
       inCareCount: inCare.length,
       hourlyRateCents: f.hourlyRateCents,
+      courts: f.courts,
       inCare,
       expected: all.filter((a) => a.status === "booked"),
       finished: all.filter((a) => a.status === "checked_out" || a.status === "no_show"),
@@ -156,6 +158,7 @@ export class AttendanceService {
         scheduledEnd: end,
         status: "booked",
         feeCents: this.feeFor(start, end, f.hourlyRateCents),
+        court: dto.court?.trim() || null,
         notes: dto.notes,
       },
       include: this.childInclude,
@@ -227,21 +230,40 @@ export class AttendanceService {
         status: "checked_in",
         checkInAt: now,
         checkedInById: actor.sub,
+        court: dto.court?.trim() || null,
       },
       include: this.childInclude,
     });
     return this.serialize(created);
   }
 
-  /** Check in an existing booking on arrival. */
-  async checkIn(actor: JwtPayload, id: string) {
+  /** Check in an existing booking on arrival (optionally recording the court). */
+  async checkIn(actor: JwtPayload, id: string, court?: string) {
     const a = await this.prisma.attendance.findUnique({ where: { id } });
     if (!a) throw new NotFoundException("Attendance not found");
     if (a.status !== "booked") throw new BadRequestException("This booking can't be checked in");
     await this.assertCapacityForCheckIn();
     const updated = await this.prisma.attendance.update({
       where: { id },
-      data: { status: "checked_in", checkInAt: new Date(), checkedInById: actor.sub },
+      data: {
+        status: "checked_in",
+        checkInAt: new Date(),
+        checkedInById: actor.sub,
+        // Keep any court already set on the booking unless a new one is given.
+        ...(court !== undefined ? { court: court.trim() || null } : {}),
+      },
+      include: this.childInclude,
+    });
+    return this.serialize(updated);
+  }
+
+  /** Update which court the parent is on (e.g. they moved courts). */
+  async setCourt(id: string, court?: string) {
+    const a = await this.prisma.attendance.findUnique({ where: { id } });
+    if (!a) throw new NotFoundException("Attendance not found");
+    const updated = await this.prisma.attendance.update({
+      where: { id },
+      data: { court: court?.trim() || null },
       include: this.childInclude,
     });
     return this.serialize(updated);

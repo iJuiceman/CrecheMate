@@ -134,6 +134,9 @@ model Attendance {
   checkOutAt     DateTime?        @map("check_out_at")
   checkedInById  String?          @map("checked_in_by_id")
   checkedOutById String?          @map("checked_out_by_id")
+  // Which court the parent is on while the child is in care — so staff can
+  // find them quickly. Free text, optionally chosen from the configured list.
+  court          String?
   // Fee finalised at check-out from the actual time in care (or estimated
   // from the booked window before then), on the site hourly rate.
   feeCents              Int            @default(0) @map("fee_cents")
@@ -213,6 +216,9 @@ model FacilitySettings {
   openTime        String   @default("07:00") @map("open_time")
   closeTime       String   @default("18:00") @map("close_time")
   abn             String?
+  // The club's courts, offered as a pick-list when checking a child in. Empty
+  // = staff type the court free-form.
+  courts          String[] @default([])
   // Waiver shown on the parent self-registration form. Editable by an admin;
   // the version bumps whenever the text changes so we can record which wording
   // each parent actually signed.

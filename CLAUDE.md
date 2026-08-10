@@ -74,6 +74,11 @@ session online** (`/book`) with card prepayment, which staff confirm.
   never pretends a real charge happened. `PAYMENTS_TEST_MODE=true` forces the
   env-key fallback off.
 - Fee = pro-rata hours × `hourlyRateCents`, finalised at check-out.
+- **Court**: `Attendance.court` records which court the parent is on while the
+  child is in care (the club is attached to courts) — captured at drop-in /
+  check-in, editable live (`POST /attendance/:id/court`), shown prominently on
+  the "in care now" roster. `FacilitySettings.courts` (String[]) is an optional
+  pick-list surfaced via the roster response and a datalist in the web.
 
 ## Dev workflow
 

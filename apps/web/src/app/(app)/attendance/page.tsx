@@ -2,7 +2,8 @@
 
 import { useCallback, useEffect, useState } from "react";
 import { api } from "@/lib/api";
-import { Attendance, BookingRequestRow, Guardian, money } from "@/lib/types";
+import { Attendance, BookingRequestRow, Guardian, Settings, money } from "@/lib/types";
+import CourtInput from "@/components/CourtInput";
 
 function fmtTime(iso: string | null): string {
   return iso ? new Date(iso).toLocaleTimeString("en-AU", { hour: "numeric", minute: "2-digit", hour12: true }) : "—";
@@ -25,6 +26,7 @@ export default function AttendancePage() {
   const [error, setError] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
   const [takeBooking, setTakeBooking] = useState(false);
+  const [courts, setCourts] = useState<string[]>([]);
 
   const loadDay = useCallback(() => {
     api.get<Attendance[]>(`/attendance?date=${date}`).then(setRows).catch((e) => setError(e.message));
@@ -34,6 +36,7 @@ export default function AttendancePage() {
   }, []);
   useEffect(loadDay, [loadDay]);
   useEffect(loadRequests, [loadRequests]);
+  useEffect(() => { api.get<Settings>("/settings").then((s) => setCourts(s.courts ?? [])).catch(() => {}); }, []);
 
   async function cancel(id: string) {
     try { await api.post(`/attendance/${id}/cancel`); loadDay(); }
@@ -81,6 +84,7 @@ export default function AttendancePage() {
                 {a.scheduledStart ? `Booked ${fmtTime(a.scheduledStart)}–${fmtTime(a.scheduledEnd)}` : "Walk-in"}
                 {a.checkInAt ? ` · in ${fmtTime(a.checkInAt)}` : ""}
                 {a.checkOutAt ? ` · out ${fmtTime(a.checkOutAt)}` : ""}
+                {a.court ? ` · 📍 ${a.court}` : ""}
               </p>
             </div>
             <div className="flex items-center gap-3">
@@ -93,7 +97,7 @@ export default function AttendancePage() {
         {rows.length === 0 && <p className="rounded-card border border-dashed border-line p-8 text-center text-sm text-ink/50">Nothing on this day.</p>}
       </div>
 
-      {takeBooking && <TakeBookingModal onClose={() => setTakeBooking(false)} onBooked={(name) => { setTakeBooking(false); setNotice(`Booked ${name}.`); loadDay(); }} onError={setError} />}
+      {takeBooking && <TakeBookingModal courts={courts} onClose={() => setTakeBooking(false)} onBooked={(name) => { setTakeBooking(false); setNotice(`Booked ${name}.`); loadDay(); }} onError={setError} />}
     </div>
   );
 }
@@ -182,13 +186,14 @@ function MatchModal({ req, onClose, onPick }: { req: BookingRequestRow; onClose:
   );
 }
 
-function TakeBookingModal({ onClose, onBooked, onError }: { onClose: () => void; onBooked: (name: string) => void; onError: (s: string) => void }) {
+function TakeBookingModal({ courts, onClose, onBooked, onError }: { courts: string[]; onClose: () => void; onBooked: (name: string) => void; onError: (s: string) => void }) {
   const [q, setQ] = useState("");
   const [results, setResults] = useState<Guardian[]>([]);
   const [picked, setPicked] = useState<{ id: string; name: string } | null>(null);
   const [date, setDate] = useState(new Date().toLocaleDateString("en-CA"));
   const [start, setStart] = useState("09:00");
   const [end, setEnd] = useState("12:00");
+  const [court, setCourt] = useState("");
   const [busy, setBusy] = useState(false);
 
   useEffect(() => {
@@ -207,6 +212,7 @@ function TakeBookingModal({ onClose, onBooked, onError }: { onClose: () => void;
         childId: picked.id,
         startAt: new Date(`${date}T${start}:00`).toISOString(),
         endAt: new Date(`${date}T${end}:00`).toISOString(),
+        court: court.trim() || undefined,
       });
       onBooked(picked.name);
     } catch (e) {
@@ -245,6 +251,7 @@ function TakeBookingModal({ onClose, onBooked, onError }: { onClose: () => void;
                 <div><label className="label">From</label><input type="time" className="field" step={1800} value={start} onChange={(e) => setStart(e.target.value)} /></div>
                 <div><label className="label">Until</label><input type="time" className="field" step={1800} value={end} onChange={(e) => setEnd(e.target.value)} /></div>
               </div>
+              <div><label className="label">Court (optional — where the parent will be)</label><CourtInput value={court} onChange={setCourt} courts={courts} /></div>
               <p className="text-xs text-ink/50">The fee is calculated from the window and taken at check-out (or take a card payment from the roster later).</p>
             </div>
             <button className="btn mt-4 w-full" disabled={busy} onClick={book}>{busy ? "Booking…" : "Confirm booking"}</button>

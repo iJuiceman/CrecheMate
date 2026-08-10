@@ -1,7 +1,7 @@
 import { Body, Controller, Get, Param, Post, Query, Req } from "@nestjs/common";
 import type { Request } from "express";
 import { AttendanceService } from "./attendance.service";
-import { BookAttendanceDto, CheckOutDto, DropInDto, TakePaymentDto } from "./attendance.dto";
+import { BookAttendanceDto, CheckInDto, CheckOutDto, DropInDto, SetCourtDto, TakePaymentDto } from "./attendance.dto";
 import { JwtPayload } from "../auth/jwt-payload.interface";
 
 function actor(req: Request): JwtPayload {
@@ -38,8 +38,13 @@ export class AttendanceController {
   }
 
   @Post(":id/check-in")
-  checkIn(@Param("id") id: string, @Req() req: Request) {
-    return this.attendance.checkIn(actor(req), id);
+  checkIn(@Param("id") id: string, @Body() dto: CheckInDto, @Req() req: Request) {
+    return this.attendance.checkIn(actor(req), id, dto.court);
+  }
+
+  @Post(":id/court")
+  setCourt(@Param("id") id: string, @Body() dto: SetCourtDto) {
+    return this.attendance.setCourt(id, dto.court);
   }
 
   @Post(":id/check-out")

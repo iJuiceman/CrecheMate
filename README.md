@@ -56,8 +56,10 @@ contact** details, needs no court booking, and runs on its own.
     full, and a booking is refused when its window is already full.
 - **Today's roster** (the main desk screen): live "in care now" count vs.
   capacity, each child's **age, medical flags in red, parent name/phone, and
-  emergency contacts**, time in care and a running fee estimate, plus
-  expected-today and finished-today lists. Auto-refreshes every 15 s.
+  emergency contacts**, **which court the parent is on** (captured at check-in
+  and editable live, so staff can find them fast), time in care and a running
+  fee estimate, plus expected-today and finished-today lists. Auto-refreshes
+  every 15 s. Configure your courts as a pick-list under Settings.
 - **Fees & payment.** A per-child **hourly rate** (site-configurable) is
   charged pro-rata; the fee is finalised at check-out from the actual time in
   care. Take payment at the desk as **cash / card / EFTPOS**, or an **online

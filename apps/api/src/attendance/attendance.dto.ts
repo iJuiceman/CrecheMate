@@ -12,6 +12,11 @@ export class BookAttendanceDto {
 
   @IsOptional()
   @IsString()
+  @MaxLength(60)
+  court?: string;
+
+  @IsOptional()
+  @IsString()
   @MaxLength(500)
   notes?: string;
 }
@@ -19,6 +24,25 @@ export class BookAttendanceDto {
 export class DropInDto {
   @IsUUID()
   childId: string;
+
+  @IsOptional()
+  @IsString()
+  @MaxLength(60)
+  court?: string;
+}
+
+export class CheckInDto {
+  @IsOptional()
+  @IsString()
+  @MaxLength(60)
+  court?: string;
+}
+
+export class SetCourtDto {
+  @IsOptional()
+  @IsString()
+  @MaxLength(60)
+  court?: string;
 }
 
 export class TakePaymentDto {

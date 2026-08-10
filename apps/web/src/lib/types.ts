@@ -47,6 +47,7 @@ export interface Attendance {
   scheduledEnd: string | null;
   checkInAt: string | null;
   checkOutAt: string | null;
+  court: string | null;
   feeCents: number;
   paymentStatus: PaymentStatus;
   paymentMethod: string | null;
@@ -65,6 +66,7 @@ export interface Roster {
   capacity: number;
   inCareCount: number;
   hourlyRateCents: number;
+  courts: string[];
   inCare: Attendance[];
   expected: Attendance[];
   finished: Attendance[];
@@ -89,6 +91,7 @@ export interface Settings {
   openTime: string;
   closeTime: string;
   abn: string | null;
+  courts: string[];
   waiverText: string | null;
   waiverVersion: number;
   // Payments — the secret key is never sent to the browser.
