@@ -73,7 +73,10 @@ session online** (`/book`) with card prepayment, which staff confirm.
   online payments fall back to **test mode**: an honest auto-succeed stub that
   never pretends a real charge happened. `PAYMENTS_TEST_MODE=true` forces the
   env-key fallback off.
-- Fee = pro-rata hours × `hourlyRateCents`, finalised at check-out.
+- Fee = hours × `hourlyRateCents`, with the billed time **rounded up to the
+  nearest ¼ hour** (`feeFor` in both attendance + bookings services), finalised
+  at check-out from actual time in care. Any part-quarter counts as a full 15
+  min, so a very short stay bills a 15-min minimum.
 - **Court**: `Attendance.court` records which court the parent is on while the
   child is in care (the club is attached to courts) — captured at drop-in /
   check-in, editable live (`POST /attendance/:id/court`), shown prominently on
@@ -81,6 +84,12 @@ session online** (`/book`) with card prepayment, which staff confirm.
   court list, managed in Settings (add/remove, auto-saved via a courts-only
   PATCH) and surfaced as a **dropdown** at check-in/booking (free-text fallback
   only when no courts are configured).
+- **Court booking is mandatory for pre-booked sessions** (creche is only
+  offered alongside a court booking): `court` is required on `BookAttendanceDto`
+  and `CreateBookingRequestDto`; `courtBookingName` (optional) records the name
+  the court is booked under when it differs from the parent. The booking window
+  *is* the court booking window (same duration). Walk-in drop-ins keep court
+  optional.
 
 ## Dev workflow
 

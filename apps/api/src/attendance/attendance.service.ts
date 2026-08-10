@@ -27,10 +27,15 @@ export class AttendanceService {
     return { start: start.toJSDate(), end: start.plus({ days: 1 }).toJSDate(), date: start.toJSDate() };
   }
 
-  /** Fee for a span of care, pro-rata on the hourly rate (min one bill of 0). */
+  /**
+   * Fee for a span of care on the hourly rate. Time is billed rounded UP to the
+   * nearest quarter-hour (so any part-quarter counts as a full 15 minutes),
+   * which keeps billing tidy.
+   */
   private feeFor(start: Date, end: Date, hourlyRateCents: number): number {
     const hours = Math.max(0, (end.getTime() - start.getTime()) / 3_600_000);
-    return Math.round(hours * hourlyRateCents);
+    const billedHours = Math.ceil(hours * 4) / 4;
+    return Math.round(billedHours * hourlyRateCents);
   }
 
   private childCard(child: any) {
@@ -65,6 +70,7 @@ export class AttendanceService {
       checkInAt: a.checkInAt,
       checkOutAt: a.checkOutAt,
       court: a.court,
+      courtBookingName: a.courtBookingName,
       feeCents: a.feeCents,
       paymentStatus: a.paymentStatus,
       paymentMethod: a.paymentMethod,
@@ -158,7 +164,8 @@ export class AttendanceService {
         scheduledEnd: end,
         status: "booked",
         feeCents: this.feeFor(start, end, f.hourlyRateCents),
-        court: dto.court?.trim() || null,
+        court: dto.court.trim(),
+        courtBookingName: dto.courtBookingName?.trim() || null,
         notes: dto.notes,
       },
       include: this.childInclude,
@@ -176,6 +183,8 @@ export class AttendanceService {
     start: Date;
     end: Date;
     feeCents: number;
+    court?: string | null;
+    courtBookingName?: string | null;
     stripePaymentIntentId?: string | null;
     notes?: string | null;
   }) {
@@ -204,6 +213,8 @@ export class AttendanceService {
         scheduledEnd: p.end,
         status: "booked",
         feeCents: p.feeCents,
+        court: p.court ?? null,
+        courtBookingName: p.courtBookingName ?? null,
         paymentStatus: paid ? "paid" : "unpaid",
         paymentMethod: paid ? "online" : null,
         stripePaymentIntentId: p.stripePaymentIntentId ?? null,

@@ -4,7 +4,8 @@ import Link from "next/link";
 import { useCallback, useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { api } from "@/lib/api";
-import { ChildFull, EmergencyContact, Guardian } from "@/lib/types";
+import { ChildFull, EmergencyContact, Guardian, Settings } from "@/lib/types";
+import CourtInput from "@/components/CourtInput";
 
 export default function FamilyDetail({ params }: { params: { id: string } }) {
   const router = useRouter();
@@ -130,14 +131,26 @@ function BookForm({ child, onClose, onBooked, onError }: { child: ChildFull; onC
   const [date, setDate] = useState(today);
   const [start, setStart] = useState("09:00");
   const [end, setEnd] = useState("11:00");
+  const [court, setCourt] = useState("");
+  const [courtName, setCourtName] = useState("");
+  const [courts, setCourts] = useState<string[]>([]);
   const [busy, setBusy] = useState(false);
 
+  useEffect(() => { api.get<Settings>("/settings").then((s) => setCourts(s.courts ?? [])).catch(() => {}); }, []);
+
   async function submit() {
+    if (!court.trim()) { onError("A court booking is required — pick the court."); return; }
     setBusy(true);
     try {
       const startAt = new Date(`${date}T${start}:00`);
       const endAt = new Date(`${date}T${end}:00`);
-      await api.post("/attendance/book", { childId: child.id, startAt: startAt.toISOString(), endAt: endAt.toISOString() });
+      await api.post("/attendance/book", {
+        childId: child.id,
+        startAt: startAt.toISOString(),
+        endAt: endAt.toISOString(),
+        court: court.trim(),
+        courtBookingName: courtName.trim() || undefined,
+      });
       onBooked();
     } catch (e) {
       onError(e instanceof Error ? e.message : "Couldn't book.");
@@ -146,12 +159,19 @@ function BookForm({ child, onClose, onBooked, onError }: { child: ChildFull; onC
   }
 
   return (
-    <div className="mt-3 rounded-lg bg-sand p-3">
+    <div className="mt-3 space-y-2 rounded-lg bg-sand p-3">
+      <p className="text-xs text-ink/60">A creche booking must be attached to a court booking, for the same time.</p>
       <div className="flex flex-wrap items-end gap-2">
         <div><label className="label">Date</label><input type="date" className="field" value={date} onChange={(e) => setDate(e.target.value)} /></div>
         <div><label className="label">From</label><input type="time" className="field" value={start} onChange={(e) => setStart(e.target.value)} /></div>
         <div><label className="label">To</label><input type="time" className="field" value={end} onChange={(e) => setEnd(e.target.value)} /></div>
-        <button className="btn" disabled={busy} onClick={submit}>{busy ? "…" : "Book"}</button>
+      </div>
+      <div className="flex flex-wrap items-end gap-2">
+        <div className="min-w-[10rem]"><label className="label">Court booking</label><CourtInput value={court} onChange={setCourt} courts={courts} /></div>
+        <div className="min-w-[12rem] flex-1"><label className="label">Court booked under (if not the parent)</label><input className="field" placeholder="Name on the court booking" value={courtName} onChange={(e) => setCourtName(e.target.value)} /></div>
+      </div>
+      <div className="flex gap-2">
+        <button className="btn" disabled={busy || !court.trim()} onClick={submit}>{busy ? "…" : "Book"}</button>
         <button className="btn-secondary" onClick={onClose}>Cancel</button>
       </div>
     </div>

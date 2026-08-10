@@ -135,8 +135,12 @@ model Attendance {
   checkedInById  String?          @map("checked_in_by_id")
   checkedOutById String?          @map("checked_out_by_id")
   // Which court the parent is on while the child is in care — so staff can
-  // find them quickly. Free text, optionally chosen from the configured list.
+  // find them quickly. Chosen from the configured court list. Required for
+  // pre-booked sessions (creche is only offered alongside a court booking).
   court          String?
+  // The name the court is booked under, when it differs from the creche
+  // booking / parent (e.g. a partner booked the court).
+  courtBookingName String? @map("court_booking_name")
   // Fee finalised at check-out from the actual time in care (or estimated
   // from the booked window before then), on the site hourly rate.
   feeCents              Int            @default(0) @map("fee_cents")
@@ -179,6 +183,10 @@ model BookingRequest {
   childBirthYear  Int?     @map("child_birth_year")
   requestedStart  DateTime @map("requested_start")
   requestedEnd    DateTime @map("requested_end")
+  // The court booking this creche session is attached to (required at request
+  // time) and the name it's booked under if different from the parent.
+  court            String?
+  courtBookingName String? @map("court_booking_name")
   feeCents        Int      @map("fee_cents")
   notes           String?
 

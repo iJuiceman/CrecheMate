@@ -161,6 +161,7 @@ function InCareCard({ a, courts, rate, busy, act }: { a: Attendance; courts: str
           <div className="flex items-center justify-between">
             <span className="text-sm font-semibold text-teal-dark">
               📍 {a.court ? `On ${a.court}` : <span className="font-normal text-ink/50">No court set</span>}
+              {a.courtBookingName ? <span className="font-normal text-ink/50"> · court booked under {a.courtBookingName}</span> : null}
             </span>
             <button className="text-xs font-medium text-teal hover:underline" onClick={() => setEditCourt(true)}>{a.court ? "Change" : "Set court"}</button>
           </div>

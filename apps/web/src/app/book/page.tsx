@@ -5,6 +5,7 @@ import { api } from "@/lib/api";
 import { isAuPhone } from "@/lib/phone";
 import { BookingConfig, money } from "@/lib/types";
 import StripeCardModal from "@/components/StripeCardModal";
+import CourtInput from "@/components/CourtInput";
 
 const field =
   "w-full rounded-xl border border-line bg-white px-4 py-3 text-base text-ink placeholder:text-ink/40 focus:border-teal focus:outline-none focus:ring-2 focus:ring-teal/40";
@@ -33,6 +34,8 @@ export default function BookPage() {
   // Details
   const [parent, setParent] = useState({ firstName: "", lastName: "", phone: "", email: "" });
   const [child, setChild] = useState({ firstName: "", lastName: "", birthMonth: "", birthYear: "" });
+  const [court, setCourt] = useState("");
+  const [courtName, setCourtName] = useState("");
   const [notes, setNotes] = useState("");
 
   const [busy, setBusy] = useState(false);
@@ -73,7 +76,8 @@ export default function BookPage() {
 
   const detailsValid =
     parent.firstName.trim() && parent.lastName.trim() && isAuPhone(parent.phone) &&
-    child.firstName.trim() && child.lastName.trim() && child.birthMonth && child.birthYear;
+    child.firstName.trim() && child.lastName.trim() && child.birthMonth && child.birthYear &&
+    court.trim();
 
   async function payAndSubmit() {
     if (!detailsValid) return;
@@ -84,6 +88,8 @@ export default function BookPage() {
         child: { firstName: child.firstName.trim(), lastName: child.lastName.trim(), birthMonth: Number(child.birthMonth), birthYear: Number(child.birthYear) },
         startAt: iso(date, start),
         endAt: iso(date, end),
+        court: court.trim(),
+        courtBookingName: courtName.trim() || undefined,
         notes: notes.trim() || undefined,
       });
       if (req.testMode || !req.publishableKey) {
@@ -195,6 +201,19 @@ export default function BookPage() {
                 </Labeled>
                 <Labeled label="Anything we should know? (optional)" className="sm:col-span-2">
                   <textarea className={field} rows={2} value={notes} onChange={(e) => setNotes(e.target.value)} />
+                </Labeled>
+              </div>
+            </div>
+
+            <div className="rounded-card border border-line bg-white p-5 sm:p-6">
+              <h2 className="font-display text-xl font-bold text-ink">Your court booking</h2>
+              <p className="mb-4 mt-0.5 text-sm text-ink/55">Creche is for players — please confirm the court you&apos;ve booked. Your creche time above must match your court booking.</p>
+              <div className="grid gap-4 sm:grid-cols-2">
+                <Labeled label="Court" required>
+                  <CourtInput value={court} onChange={setCourt} courts={cfg.courts} className={field} />
+                </Labeled>
+                <Labeled label="Court booked under (if not your name)">
+                  <input className={field} placeholder="Name on the court booking" value={courtName} onChange={(e) => setCourtName(e.target.value)} />
                 </Labeled>
               </div>
             </div>

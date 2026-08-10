@@ -19,9 +19,11 @@ export class BookingsService {
     private attendance: AttendanceService,
   ) {}
 
+  // Billed rounded UP to the nearest quarter-hour, matching the desk.
   private feeFor(start: Date, end: Date, hourlyRateCents: number): number {
     const hours = Math.max(0, (end.getTime() - start.getTime()) / 3_600_000);
-    return Math.round(hours * hourlyRateCents);
+    const billedHours = Math.ceil(hours * 4) / 4;
+    return Math.round(billedHours * hourlyRateCents);
   }
 
   /** Public: everything the booking form needs to render + constrain input. */
@@ -35,6 +37,7 @@ export class BookingsService {
       hourlyRateCents: f.hourlyRateCents,
       capacity: f.capacity,
       maxDaysAhead: 120,
+      courts: f.courts,
     };
   }
 
@@ -121,6 +124,8 @@ export class BookingsService {
         childBirthYear: dto.child.birthYear,
         requestedStart: start,
         requestedEnd: end,
+        court: dto.court.trim(),
+        courtBookingName: dto.courtBookingName?.trim() || null,
         feeCents,
         notes: dto.notes?.trim() || null,
       },
@@ -193,6 +198,8 @@ export class BookingsService {
       childAge: computeAge(r.childBirthMonth, r.childBirthYear),
       requestedStart: r.requestedStart,
       requestedEnd: r.requestedEnd,
+      court: r.court,
+      courtBookingName: r.courtBookingName,
       feeCents: r.feeCents,
       paymentStatus: r.paymentStatus,
       notes: r.notes,
@@ -254,6 +261,8 @@ export class BookingsService {
       start: request.requestedStart,
       end: request.requestedEnd,
       feeCents: request.feeCents,
+      court: request.court,
+      courtBookingName: request.courtBookingName,
       stripePaymentIntentId: request.stripePaymentIntentId,
       notes: request.notes,
     });

@@ -48,6 +48,7 @@ export interface Attendance {
   checkInAt: string | null;
   checkOutAt: string | null;
   court: string | null;
+  courtBookingName: string | null;
   feeCents: number;
   paymentStatus: PaymentStatus;
   paymentMethod: string | null;
@@ -108,6 +109,7 @@ export interface BookingConfig {
   hourlyRateCents: number;
   capacity: number;
   maxDaysAhead: number;
+  courts: string[];
 }
 
 export interface BookingRequestRow {
@@ -123,6 +125,8 @@ export interface BookingRequestRow {
   childAge: number | null;
   requestedStart: string;
   requestedEnd: string;
+  court: string | null;
+  courtBookingName: string | null;
   feeCents: number;
   paymentStatus: PaymentStatus;
   notes: string | null;

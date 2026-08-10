@@ -60,8 +60,15 @@ contact** details, needs no court booking, and runs on its own.
   and editable live, so staff can find them fast), time in care and a running
   fee estimate, plus expected-today and finished-today lists. Auto-refreshes
   every 15 s. Configure your courts as a pick-list under Settings.
+- **Court-linked bookings.** A creche **pre-booking must be attached to a court
+  booking** — staff (and parents booking online) pick the court and, if the
+  court is booked under a different name, record that name. The creche session
+  runs for the **same time** as the court booking. (Walk-in drop-ins don't
+  require one.) The court a parent is on shows on the roster so staff can find
+  them.
 - **Fees & payment.** A per-child **hourly rate** (site-configurable) is
-  charged pro-rata; the fee is finalised at check-out from the actual time in
+  charged for time in care, **rounded up to the nearest ¼ hour** to keep
+  billing tidy; the fee is finalised at check-out from the actual time in
   care. Take payment at the desk as **cash / card / EFTPOS**, or an **online
   card** payment via Stripe. An admin **links a Stripe account in-app** under
   Settings → Payments (paste the `sk_`/`pk_` keys; the secret is verified with

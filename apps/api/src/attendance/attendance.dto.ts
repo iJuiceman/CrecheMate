@@ -1,4 +1,4 @@
-import { IsIn, IsISO8601, IsOptional, IsString, IsUUID, MaxLength } from "class-validator";
+import { IsIn, IsISO8601, IsOptional, IsString, IsUUID, MaxLength, MinLength } from "class-validator";
 
 export class BookAttendanceDto {
   @IsUUID()
@@ -10,10 +10,18 @@ export class BookAttendanceDto {
   @IsISO8601()
   endAt: string;
 
+  // Required — a creche booking must be attached to a court booking. The
+  // start/end above are the court booking's window (same duration).
+  @IsString()
+  @MinLength(1)
+  @MaxLength(60)
+  court: string;
+
+  // The name the court is booked under, if different from the parent.
   @IsOptional()
   @IsString()
-  @MaxLength(60)
-  court?: string;
+  @MaxLength(120)
+  courtBookingName?: string;
 
   @IsOptional()
   @IsString()

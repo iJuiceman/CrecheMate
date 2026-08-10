@@ -85,6 +85,7 @@ export default function AttendancePage() {
                 {a.checkInAt ? ` · in ${fmtTime(a.checkInAt)}` : ""}
                 {a.checkOutAt ? ` · out ${fmtTime(a.checkOutAt)}` : ""}
                 {a.court ? ` · 📍 ${a.court}` : ""}
+                {a.courtBookingName ? ` (court: ${a.courtBookingName})` : ""}
               </p>
             </div>
             <div className="flex items-center gap-3">
@@ -125,6 +126,7 @@ function RequestCard({ req, onDone, onError }: { req: BookingRequestRow; onDone:
         <div>
           <p className="font-semibold text-ink">{req.childName} <span className="text-sm font-normal text-ink/50">{req.childAge != null ? `· age ${req.childAge}` : ""}</span></p>
           <p className="text-sm text-ink/70">{fmtDay(req.requestedStart)} · {fmtTime(req.requestedStart)}–{fmtTime(req.requestedEnd)}</p>
+          {req.court && <p className="mt-1 text-sm text-ink/70">📍 {req.court}{req.courtBookingName ? ` · court booked under ${req.courtBookingName}` : ""}</p>}
           <p className="mt-1 text-sm text-ink/60">Parent: {req.parentName} · {req.parentPhone}{req.parentEmail ? ` · ${req.parentEmail}` : ""}</p>
           {req.notes && <p className="mt-1 text-sm text-ink/60">Note: {req.notes}</p>}
         </div>
@@ -194,6 +196,7 @@ function TakeBookingModal({ courts, onClose, onBooked, onError }: { courts: stri
   const [start, setStart] = useState("09:00");
   const [end, setEnd] = useState("12:00");
   const [court, setCourt] = useState("");
+  const [courtName, setCourtName] = useState("");
   const [busy, setBusy] = useState(false);
 
   useEffect(() => {
@@ -206,13 +209,15 @@ function TakeBookingModal({ courts, onClose, onBooked, onError }: { courts: stri
 
   async function book() {
     if (!picked) return;
+    if (!court.trim()) { onError("A court booking is required — pick the court."); return; }
     setBusy(true);
     try {
       await api.post("/attendance/book", {
         childId: picked.id,
         startAt: new Date(`${date}T${start}:00`).toISOString(),
         endAt: new Date(`${date}T${end}:00`).toISOString(),
-        court: court.trim() || undefined,
+        court: court.trim(),
+        courtBookingName: courtName.trim() || undefined,
       });
       onBooked(picked.name);
     } catch (e) {
@@ -251,10 +256,11 @@ function TakeBookingModal({ courts, onClose, onBooked, onError }: { courts: stri
                 <div><label className="label">From</label><input type="time" className="field" step={1800} value={start} onChange={(e) => setStart(e.target.value)} /></div>
                 <div><label className="label">Until</label><input type="time" className="field" step={1800} value={end} onChange={(e) => setEnd(e.target.value)} /></div>
               </div>
-              <div><label className="label">Court (optional — where the parent will be)</label><CourtInput value={court} onChange={setCourt} courts={courts} /></div>
-              <p className="text-xs text-ink/50">The fee is calculated from the window and taken at check-out (or take a card payment from the roster later).</p>
+              <div><label className="label">Court booking (required — same time as above)</label><CourtInput value={court} onChange={setCourt} courts={courts} /></div>
+              <div><label className="label">Court booked under (if not the parent)</label><input className="field" placeholder="Name on the court booking" value={courtName} onChange={(e) => setCourtName(e.target.value)} /></div>
+              <p className="text-xs text-ink/50">A creche booking must be attached to a court booking, for the same duration. The fee is taken at check-out, billed to the nearest ¼ hour.</p>
             </div>
-            <button className="btn mt-4 w-full" disabled={busy} onClick={book}>{busy ? "Booking…" : "Confirm booking"}</button>
+            <button className="btn mt-4 w-full" disabled={busy || !court.trim()} onClick={book}>{busy ? "Booking…" : "Confirm booking"}</button>
           </>
         )}
         <button className="btn-secondary mt-3 w-full" onClick={onClose}>Close</button>

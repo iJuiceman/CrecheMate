@@ -81,6 +81,18 @@ export class CreateBookingRequestDto {
   @IsISO8601()
   endAt: string;
 
+  // Required — the court booking this creche session is attached to. The window
+  // above is the court booking's window (same duration).
+  @IsString()
+  @MinLength(1)
+  @MaxLength(60)
+  court: string;
+
+  @IsOptional()
+  @IsString()
+  @MaxLength(120)
+  courtBookingName?: string;
+
   @IsOptional()
   @IsString()
   @MaxLength(500)
