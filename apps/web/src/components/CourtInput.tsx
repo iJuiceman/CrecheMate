@@ -1,16 +1,14 @@
 "use client";
 
-import { useId } from "react";
-
-// A court field: free text, but backed by a datalist of the club's configured
-// courts so staff can pick quickly and consistently. Works with or without a
-// configured list.
+// Court picker. When courts are configured (Settings → Courts) staff simply
+// choose one from a dropdown — no typing. If none are configured yet it falls
+// back to a text box so check-in is never blocked.
 export default function CourtInput({
   value,
   onChange,
   courts,
   className,
-  placeholder = "e.g. Court 3",
+  placeholder = "Select court…",
   autoFocus,
 }: {
   value: string;
@@ -20,22 +18,31 @@ export default function CourtInput({
   placeholder?: string;
   autoFocus?: boolean;
 }) {
-  const id = useId();
-  return (
-    <>
+  if (courts.length === 0) {
+    return (
       <input
         className={className ?? "field"}
-        list={courts.length ? id : undefined}
         value={value}
-        placeholder={placeholder}
+        placeholder="e.g. Pickleball 1 (add your courts in Settings)"
         autoFocus={autoFocus}
         onChange={(e) => onChange(e.target.value)}
       />
-      {courts.length > 0 && (
-        <datalist id={id}>
-          {courts.map((c) => <option key={c} value={c} />)}
-        </datalist>
-      )}
-    </>
+    );
+  }
+  // Keep showing a court that's no longer in the list (e.g. renamed/removed)
+  // so an existing record still reads correctly.
+  const options = value && !courts.includes(value) ? [value, ...courts] : courts;
+  return (
+    <select
+      className={className ?? "field"}
+      value={value}
+      autoFocus={autoFocus}
+      onChange={(e) => onChange(e.target.value)}
+    >
+      <option value="">{placeholder}</option>
+      {options.map((c) => (
+        <option key={c} value={c}>{c}</option>
+      ))}
+    </select>
   );
 }

@@ -9,6 +9,7 @@ export default function SettingsPage() {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [saved, setSaved] = useState(false);
+  const [newCourt, setNewCourt] = useState("");
 
   useEffect(() => {
     api.get<Settings>("/settings").then(setS).catch((e) => setError(e.message));
@@ -42,6 +43,28 @@ export default function SettingsPage() {
 
   if (!s) return <div className="p-6 text-sm text-ink/50">{error ?? "Loading…"}</div>;
 
+  const courts = s.courts ?? [];
+  // Courts save on their own the moment you add/remove one, so they're always
+  // ready at check-in without needing the main Save.
+  const persistCourts = async (next: string[]) => {
+    setS({ ...s, courts: next });
+    setError(null);
+    try {
+      const updated = await api.patch<Settings>("/settings", { courts: next });
+      setS(updated);
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Couldn't save courts.");
+    }
+  };
+  const addCourt = () => {
+    const name = newCourt.trim();
+    if (!name) return;
+    if (courts.some((c) => c.toLowerCase() === name.toLowerCase())) { setNewCourt(""); return; }
+    persistCourts([...courts, name]);
+    setNewCourt("");
+  };
+  const removeCourt = (i: number) => persistCourts(courts.filter((_, j) => j !== i));
+
   return (
     <div className="p-6">
       <h1 className="font-display text-2xl font-bold text-ink">Settings</h1>
@@ -73,13 +96,29 @@ export default function SettingsPage() {
         </div>
         <div>
           <label className="label">Courts</label>
-          <input
-            className="field"
-            placeholder="e.g. Court 1, Court 2, Show Court"
-            value={(s.courts ?? []).join(", ")}
-            onChange={(e) => setS({ ...s, courts: e.target.value.split(",").map((c) => c.trim()).filter(Boolean) })}
-          />
-          <p className="mt-1 text-xs text-ink/50">Comma-separated. These appear as a pick-list when checking a child in, so staff can record which court the parent is on. Leave blank to type courts free-form.</p>
+          {courts.length > 0 ? (
+            <div className="flex flex-wrap gap-2">
+              {courts.map((c, i) => (
+                <span key={i} className="inline-flex items-center gap-1.5 rounded-full border border-line bg-sand px-3 py-1 text-sm text-ink">
+                  {c}
+                  <button type="button" aria-label={`Remove ${c}`} className="text-ink/40 hover:text-coral" onClick={() => removeCourt(i)}>×</button>
+                </span>
+              ))}
+            </div>
+          ) : (
+            <p className="text-sm text-ink/40">No courts yet — add your first below.</p>
+          )}
+          <div className="mt-2 flex gap-2">
+            <input
+              className="field"
+              placeholder="e.g. Pickleball 1"
+              value={newCourt}
+              onChange={(e) => setNewCourt(e.target.value)}
+              onKeyDown={(e) => { if (e.key === "Enter") { e.preventDefault(); addCourt(); } }}
+            />
+            <button type="button" className="btn-secondary shrink-0" onClick={addCourt}>Add court</button>
+          </div>
+          <p className="mt-1 text-xs text-ink/50">These become a dropdown when checking a child in — staff pick the court instead of typing it. Added and removed courts save automatically.</p>
         </div>
         {error && <p className="rounded-lg bg-coral/10 px-3 py-2 text-sm text-coral">{error}</p>}
         {saved && <p className="rounded-lg bg-teal-light px-3 py-2 text-sm text-teal-dark">Saved.</p>}

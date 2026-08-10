@@ -77,8 +77,10 @@ session online** (`/book`) with card prepayment, which staff confirm.
 - **Court**: `Attendance.court` records which court the parent is on while the
   child is in care (the club is attached to courts) — captured at drop-in /
   check-in, editable live (`POST /attendance/:id/court`), shown prominently on
-  the "in care now" roster. `FacilitySettings.courts` (String[]) is an optional
-  pick-list surfaced via the roster response and a datalist in the web.
+  the "in care now" roster. `FacilitySettings.courts` (String[]) is the club's
+  court list, managed in Settings (add/remove, auto-saved via a courts-only
+  PATCH) and surfaced as a **dropdown** at check-in/booking (free-text fallback
+  only when no courts are configured).
 
 ## Dev workflow
 
