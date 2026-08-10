@@ -3,7 +3,7 @@
 import { useCallback, useEffect, useState } from "react";
 import { api } from "@/lib/api";
 import { Attendance, Dashboard, Guardian, Roster, money } from "@/lib/types";
-import CardPaymentModal from "./CardPaymentModal";
+import StripeCardModal from "@/components/StripeCardModal";
 
 interface PaymentIntentResponse {
   id: string;
@@ -229,7 +229,7 @@ function PaymentRow({ attendanceId, feeCents, busyKey, onDone, onBusy }: { atten
       </div>
       {err && <p className="mt-1 text-xs text-coral">{err}</p>}
       {card && (
-        <CardPaymentModal
+        <StripeCardModal
           clientSecret={card.clientSecret}
           publishableKey={card.publishableKey}
           feeCents={feeCents}

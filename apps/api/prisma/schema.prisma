@@ -151,6 +151,54 @@ model Attendance {
   @@map("attendances")
 }
 
+// ── Parent booking requests (external, staff-confirmed) ─────────────────
+// A parent pre-books from outside; they pre-pay the estimated fee and the
+// request waits for a staff member to confirm (which creates the real booking)
+// or decline (which refunds). Parent-typed details are held here verbatim and
+// never silently linked to an existing family — staff match or create on
+// confirm.
+enum BookingRequestStatus {
+  pending // paid, awaiting a staff decision
+  confirmed // staff created a booking from it
+  declined // staff declined; prepayment refunded
+  cancelled // withdrawn / expired
+}
+
+model BookingRequest {
+  id              String   @id @default(uuid())
+  parentFirstName String   @map("parent_first_name")
+  parentLastName  String   @map("parent_last_name")
+  parentPhone     String   @map("parent_phone")
+  parentEmail     String?  @map("parent_email")
+  childFirstName  String   @map("child_first_name")
+  childLastName   String   @map("child_last_name")
+  childBirthMonth Int?     @map("child_birth_month")
+  childBirthYear  Int?     @map("child_birth_year")
+  requestedStart  DateTime @map("requested_start")
+  requestedEnd    DateTime @map("requested_end")
+  feeCents        Int      @map("fee_cents")
+  notes           String?
+
+  status BookingRequestStatus @default(pending)
+
+  // Prepayment (mirrors the attendance payment fields).
+  paymentStatus         PaymentStatus @default(unpaid) @map("payment_status")
+  stripePaymentIntentId String?       @map("stripe_payment_intent_id")
+  paidAt                DateTime?     @map("paid_at")
+
+  // Set when a staff member decides: the booking it produced + the matched or
+  // newly-created child.
+  attendanceId String?   @unique @map("attendance_id")
+  childId      String?   @map("child_id")
+  decidedAt    DateTime? @map("decided_at")
+  decidedById  String?   @map("decided_by_id")
+
+  createdAt DateTime @default(now()) @map("created_at")
+
+  @@index([status])
+  @@map("booking_requests")
+}
+
 // ── Facility (single onsite service) ────────────────────────────────────
 model FacilitySettings {
   id              String   @id @default(uuid())

@@ -16,18 +16,20 @@ interface Props {
   clientSecret: string;
   publishableKey: string;
   feeCents: number;
+  title?: string;
+  subtitle?: string;
   onConfirmed: () => void; // card charged — record the payment
   onClose: () => void;
 }
 
 /** Collects and confirms a real card payment via Stripe Elements. */
-export default function CardPaymentModal({ clientSecret, publishableKey, feeCents, onConfirmed, onClose }: Props) {
+export default function StripeCardModal({ clientSecret, publishableKey, feeCents, title, subtitle, onConfirmed, onClose }: Props) {
   const stripePromise = useMemo(() => stripeFor(publishableKey), [publishableKey]);
   return (
     <div className="fixed inset-0 z-[60] grid place-items-center bg-ink/40 p-4" onClick={onClose}>
       <div className="w-full max-w-md rounded-card bg-white p-5 shadow-xl" onClick={(e) => e.stopPropagation()}>
-        <h2 className="font-display text-lg font-bold text-ink">Card payment · {money(feeCents)}</h2>
-        <p className="mt-1 text-sm text-ink/60">Enter the parent&apos;s card details to charge the fee.</p>
+        <h2 className="font-display text-lg font-bold text-ink">{title ?? `Card payment · ${money(feeCents)}`}</h2>
+        <p className="mt-1 text-sm text-ink/60">{subtitle ?? "Enter the card details to charge the fee."}</p>
         <Elements stripe={stripePromise} options={{ clientSecret, appearance: { theme: "stripe" } }}>
           <CardForm feeCents={feeCents} onConfirmed={onConfirmed} onClose={onClose} />
         </Elements>

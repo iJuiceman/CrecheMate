@@ -2,8 +2,9 @@
 
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
-import { useEffect } from "react";
+import { useEffect, useState } from "react";
 import { useAuth } from "@/lib/auth";
+import { api } from "@/lib/api";
 
 const NAV = [
   { href: "/dashboard", label: "Today's roster", icon: "🏠" },
@@ -19,10 +20,20 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
   const { user, loading, logout } = useAuth();
   const router = useRouter();
   const pathname = usePathname();
+  const [pendingRequests, setPendingRequests] = useState(0);
 
   useEffect(() => {
     if (!loading && !user) router.replace("/login");
   }, [loading, user, router]);
+
+  // Live count of online booking requests awaiting confirmation.
+  useEffect(() => {
+    if (!user) return;
+    const poll = () => api.get<{ count: number }>("/bookings/requests/count").then((r) => setPendingRequests(r.count)).catch(() => {});
+    poll();
+    const id = setInterval(poll, 20000);
+    return () => clearInterval(id);
+  }, [user]);
 
   if (loading || !user) {
     return <div className="grid min-h-screen place-items-center text-sm text-ink/50">Loading…</div>;
@@ -49,7 +60,10 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
                 }`}
               >
                 <span>{item.icon}</span>
-                {item.label}
+                <span className="flex-1">{item.label}</span>
+                {item.href === "/attendance" && pendingRequests > 0 && (
+                  <span className="rounded-full bg-coral px-1.5 py-0.5 text-xs font-semibold text-white">{pendingRequests}</span>
+                )}
               </Link>
             );
           })}

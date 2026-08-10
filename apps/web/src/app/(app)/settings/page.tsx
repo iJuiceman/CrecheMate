@@ -79,11 +79,19 @@ export default function SettingsPage() {
       <div className="card mt-4 max-w-lg space-y-4">
         <div>
           <h2 className="font-display text-lg font-bold text-ink">Parent registration & waiver</h2>
-          <p className="mt-1 text-sm text-ink/60">Parents self-register on an iPad and sign this waiver with their finger. Open the kiosk form at:</p>
-          <p className="mt-2 rounded-lg bg-sand px-3 py-2 font-mono text-sm text-ink/80">
-            {typeof window !== "undefined" ? `${window.location.origin}/intake` : "/intake"}
-          </p>
-          <a href="/intake" target="_blank" rel="noreferrer" className="mt-2 inline-block text-sm font-medium text-teal hover:underline">Open the parent form ↗</a>
+          <p className="mt-1 text-sm text-ink/60">Parents self-register on an iPad and sign this waiver with their finger. Parent-facing pages:</p>
+          <div className="mt-2 space-y-1">
+            <p className="rounded-lg bg-sand px-3 py-2 font-mono text-sm text-ink/80">
+              {typeof window !== "undefined" ? `${window.location.origin}/intake` : "/intake"} <span className="font-sans text-ink/40">— register</span>
+            </p>
+            <p className="rounded-lg bg-sand px-3 py-2 font-mono text-sm text-ink/80">
+              {typeof window !== "undefined" ? `${window.location.origin}/book` : "/book"} <span className="font-sans text-ink/40">— book a session</span>
+            </p>
+          </div>
+          <div className="mt-2 flex gap-3">
+            <a href="/intake" target="_blank" rel="noreferrer" className="text-sm font-medium text-teal hover:underline">Open registration ↗</a>
+            <a href="/book" target="_blank" rel="noreferrer" className="text-sm font-medium text-teal hover:underline">Open booking ↗</a>
+          </div>
         </div>
         <div>
           <label className="label">Waiver text <span className="font-normal text-ink/40">(shown to parents · v{s.waiverVersion})</span></label>

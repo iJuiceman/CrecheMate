@@ -129,6 +129,20 @@ export class PaymentsService {
     this.stripeCache = undefined; // force a fresh client next call
   }
 
+  /** Refund a payment (e.g. when a booking request is declined). No-op for
+   * test-mode stubs, which never moved real money. */
+  async refund(paymentIntentId: string | null | undefined): Promise<void> {
+    if (!paymentIntentId || paymentIntentId.startsWith("pi_test_")) return;
+    const key = await this.secretKey();
+    if (!key) return; // account was unlinked; nothing we can do here
+    try {
+      await this.client(key).refunds.create({ payment_intent: paymentIntentId });
+    } catch (e) {
+      this.logger.error(`Stripe refund failed for ${paymentIntentId}: ${(e as Error).message}`);
+      throw new BadRequestException("Refund failed — issue it manually in the Stripe dashboard");
+    }
+  }
+
   /** Unlink the Stripe account — payments fall back to test-mode stubs. */
   async unlinkAccount(settingsId: string): Promise<void> {
     await this.prisma.facilitySettings.update({

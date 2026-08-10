@@ -163,6 +163,55 @@ export class AttendanceService {
     return this.serialize(created);
   }
 
+  /**
+   * Create a booking that's already paid — used when staff confirm a parent's
+   * prepaid booking request. Capacity is enforced against the real roster
+   * (booked + in-care) so a confirmation can never oversell a window.
+   */
+  async createConfirmedBooking(p: {
+    childId: string;
+    start: Date;
+    end: Date;
+    feeCents: number;
+    stripePaymentIntentId?: string | null;
+    notes?: string | null;
+  }) {
+    const f = await this.facility();
+    if (p.end <= p.start) throw new BadRequestException("End time must be after the start time");
+    const overlapping = await this.prisma.attendance.count({
+      where: {
+        status: { in: ["booked", "checked_in"] },
+        scheduledStart: { lt: p.end },
+        scheduledEnd: { gt: p.start },
+      },
+    });
+    if (overlapping >= f.capacity) {
+      throw new ConflictException("The creche is fully booked for that time — can't confirm this request.");
+    }
+    const paid = !!p.stripePaymentIntentId;
+    const { date } = this.dayBounds(
+      f.timezone,
+      DateTime.fromJSDate(p.start).setZone(f.timezone).toISODate() ?? undefined,
+    );
+    const created = await this.prisma.attendance.create({
+      data: {
+        childId: p.childId,
+        serviceDate: date,
+        scheduledStart: p.start,
+        scheduledEnd: p.end,
+        status: "booked",
+        feeCents: p.feeCents,
+        paymentStatus: paid ? "paid" : "unpaid",
+        paymentMethod: paid ? "online" : null,
+        stripePaymentIntentId: p.stripePaymentIntentId ?? null,
+        paidAt: paid ? new Date() : null,
+        notes: p.notes ?? null,
+      },
+      include: this.childInclude,
+    });
+    return created;
+  }
+
   /** Walk-in: create the attendance already checked in. */
   async dropIn(actor: JwtPayload, dto: DropInDto) {
     const f = await this.facility();

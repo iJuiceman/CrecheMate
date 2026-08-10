@@ -12,7 +12,8 @@ out, and per-child hourly fees paid at the desk (cash/card/eftpos or online
 card via Stripe). Individual staff logins by **username** (email is optional,
 kept for receipts/records only) with `admin` / `educator` roles. Parents can
 **self-register on an iPad kiosk** (`/intake`) — their details + child + emergency
-contacts, then read and sign a waiver with their finger.
+contacts, then read and sign a waiver with their finger — and **pre-book a
+session online** (`/book`) with card prepayment, which staff confirm.
 
 ## Stack & layout
 
@@ -41,8 +42,21 @@ contacts, then read and sign a waiver with their finger.
   FacilitySettings; its `waiverVersion` bumps on every wording change so each
   guardian's `waiverVersion` records exactly what they signed.
 - Phone numbers are validated as Australian (`common/phone.validator.ts`,
-  `IsAuPhone`) on both the intake and staff family forms; the web mirrors the
-  rule in `lib/phone.ts`.
+  `IsAuPhone`) on the intake, booking, and staff family forms; the web mirrors
+  the rule in `lib/phone.ts`.
+- External bookings (`bookings` module) are **request → staff-confirm**. Public
+  routes (`GET /bookings/config`, `POST /bookings/quote`, `POST /bookings`,
+  `POST /bookings/:id/pay`) are `@Public()` and **rate-limited** (ThrottlerGuard,
+  30/min; same on intake). A parent **prepays** the estimated fee (Stripe) at
+  submit; the request sits in `BookingRequest` (status `pending`, `paid`). Staff
+  confirm → `AttendanceService.createConfirmedBooking` (capacity-enforced,
+  marks the booking paid) matched to an existing child or a new family; decline
+  → `PaymentsService.refund` (no-op for test-mode stubs). Pending paid requests
+  count toward a window's availability so a slot isn't oversold before a
+  decision; capacity is authoritatively re-checked at confirm.
+- Making the parent pages reachable from the internet: see
+  `docs/EXTERNAL_ACCESS.md` (reverse proxy + TLS, `NEXT_PUBLIC_API_URL` +
+  `CORS_ORIGINS`).
 - Children's medical notes are encrypted at the app layer
   (`common/encryption.util.ts`, `CHILD_DATA_ENCRYPTION_KEY`, AES-256-GCM).
   Never store them plaintext.
@@ -79,6 +93,6 @@ New Prisma models: add a migration; the API container runs
 ## Not yet built (backlog)
 
 - Receipts/PDF, reporting/exports, daily attendance sheet.
-- Parent-facing portal beyond self-registration (bookings/payments are still
-  staff-operated).
+- Parent-facing portal beyond self-registration + booking (parents can't yet
+  view/manage their own bookings after submitting).
 - QR check-in, photos, incident/accident logs, immunisation records.

@@ -46,7 +46,7 @@ export default function LoginPage() {
           </button>
         </form>
         <p className="mt-4 text-center text-sm text-ink/50">
-          Registering a child? <a href="/intake" className="font-medium text-teal hover:underline">Open the parent form</a>
+          Parents: <a href="/intake" className="font-medium text-teal hover:underline">register a child</a> or <a href="/book" className="font-medium text-teal hover:underline">book a session</a>
         </p>
       </div>
     </div>

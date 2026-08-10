@@ -18,6 +18,18 @@ contact** details, needs no court booking, and runs on its own.
   one-time setup screen to create the first admin (no default password ever
   ships). Passwords are bcrypt-hashed; a suspended account can't sign in; the
   last active admin can't be locked out.
+- **Online booking (parents + phone).** Parents pre-book a session from
+  anywhere at `/book`: they pick a date and time within opening hours (with a
+  live price and availability check), enter their and their child's details
+  (AU phone validated, birth month/year dropdowns), and **prepay the fee by
+  card** (Stripe). Every online booking is a **request** — it appears in a
+  staff queue with a suggested match to an existing family; staff **confirm**
+  (one click, matching an existing child or creating a new family) or
+  **decline** (which **auto-refunds**). Staff also take bookings over the phone
+  from the same page (“Take a booking”). Public endpoints are rate-limited and
+  never reveal who's already registered. See
+  [docs/EXTERNAL_ACCESS.md](docs/EXTERNAL_ACCESS.md) to expose it on your
+  domain.
 - **Parent self-registration (iPad kiosk).** Hand a parent an iPad at
   `/intake` and they register themselves: their details (name, relationship,
   phone, optional email — no address), the child with **birth month/year

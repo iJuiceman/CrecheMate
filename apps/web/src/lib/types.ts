@@ -97,4 +97,40 @@ export interface Settings {
   paymentsTestMode: boolean;
 }
 
+export interface BookingConfig {
+  facilityName: string;
+  timezone: string;
+  openTime: string;
+  closeTime: string;
+  hourlyRateCents: number;
+  capacity: number;
+  maxDaysAhead: number;
+}
+
+export interface BookingRequestRow {
+  id: string;
+  parentName: string;
+  parentPhone: string;
+  parentEmail: string | null;
+  childName: string;
+  childFirstName: string;
+  childLastName: string;
+  childBirthMonth: number | null;
+  childBirthYear: number | null;
+  childAge: number | null;
+  requestedStart: string;
+  requestedEnd: string;
+  feeCents: number;
+  paymentStatus: PaymentStatus;
+  notes: string | null;
+  createdAt: string;
+  suggestedMatch: {
+    familyId: string;
+    childId: string;
+    childName: string;
+    guardianName: string;
+    phoneMatches: boolean;
+  } | null;
+}
+
 export const money = (cents: number) => `$${(cents / 100).toFixed(2)}`;
