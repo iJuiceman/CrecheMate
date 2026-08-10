@@ -10,9 +10,14 @@ services:
       - CHILD_DATA_ENCRYPTION_KEY=${CHILD_DATA_ENCRYPTION_KEY}
       - STRIPE_SECRET_KEY=${STRIPE_SECRET_KEY}
       - PAYMENTS_TEST_MODE=${PAYMENTS_TEST_MODE}
-      - CORS_ORIGINS=http://localhost:5001
+      # Origins allowed to call the API — set to this PC's address(es) in .env
+      # (localhost for single-machine use, plus the LAN IP for other devices).
+      - CORS_ORIGINS=${CORS_ORIGINS:-http://localhost:5001}
     ports:
-      - "127.0.0.1:5000:5000"
+      # All interfaces so the onsite PC's own browser AND other devices on the
+      # LAN can reach it. The box sits behind a router that forwards nothing
+      # but 80/443, so this stays internal.
+      - "5000:5000"
     depends_on:
       - postgres
     logging:
@@ -26,10 +31,14 @@ services:
       context: .
       dockerfile: apps/web/Dockerfile
       args:
+        # Baked into the browser bundle at build time — must be an address the
+        # CLIENT's browser can reach. localhost for single-machine use; set to
+        # the PC's LAN IP in .env (and rebuild web) for access from other
+        # devices onsite.
         NEXT_PUBLIC_API_URL: ${NEXT_PUBLIC_API_URL:-http://localhost:5000}
     restart: unless-stopped
     ports:
-      - "127.0.0.1:5001:3000"
+      - "5001:3000"
     depends_on:
       - api
     logging:
