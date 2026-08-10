@@ -1,0 +1,13 @@
+{
+  "name": "crechemate",
+  "version": "0.1.0",
+  "private": true,
+  "description": "CrecheMate — standalone onsite creche / childcare management",
+  "workspaces": [
+    "apps/api",
+    "apps/web"
+  ],
+  "scripts": {
+    "build": "npm run build --workspace apps/api && npm run build --workspace apps/web"
+  }
+}

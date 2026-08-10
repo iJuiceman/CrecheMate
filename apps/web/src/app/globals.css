@@ -1,0 +1,26 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+html,
+body {
+  background: #faf7f2;
+  color: #1f2933;
+}
+
+/* Inputs share one calm look. */
+.field {
+  @apply w-full rounded-lg border border-line bg-white px-3 py-2 text-sm text-ink placeholder:text-ink/40 focus:border-teal focus:outline-none focus:ring-1 focus:ring-teal;
+}
+.btn {
+  @apply inline-flex items-center justify-center gap-1.5 rounded-lg bg-teal px-4 py-2 text-sm font-semibold text-white transition-colors hover:bg-teal-dark disabled:opacity-50;
+}
+.btn-secondary {
+  @apply inline-flex items-center justify-center gap-1.5 rounded-lg border border-line bg-white px-4 py-2 text-sm font-semibold text-ink transition-colors hover:bg-sand disabled:opacity-50;
+}
+.card {
+  @apply rounded-card border border-line bg-white p-4;
+}
+.label {
+  @apply mb-1 block text-xs font-semibold uppercase tracking-wide text-ink/50;
+}

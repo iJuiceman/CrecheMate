@@ -1,0 +1,39 @@
+services:
+  api:
+    build:
+      context: .
+      dockerfile: apps/api/Dockerfile
+    restart: unless-stopped
+    environment:
+      - DATABASE_URL=postgresql://crechemate:${POSTGRES_PASSWORD}@postgres:5432/crechemate
+      - JWT_SECRET=${JWT_SECRET}
+      - CHILD_DATA_ENCRYPTION_KEY=${CHILD_DATA_ENCRYPTION_KEY}
+      - STRIPE_SECRET_KEY=${STRIPE_SECRET_KEY}
+      - PAYMENTS_TEST_MODE=${PAYMENTS_TEST_MODE}
+      - CORS_ORIGINS=http://localhost:5001
+    ports:
+      - "127.0.0.1:5000:5000"
+    depends_on:
+      - postgres
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
+
+  web:
+    build:
+      context: .
+      dockerfile: apps/web/Dockerfile
+      args:
+        NEXT_PUBLIC_API_URL: ${NEXT_PUBLIC_API_URL:-http://localhost:5000}
+    restart: unless-stopped
+    ports:
+      - "127.0.0.1:5001:3000"
+    depends_on:
+      - api
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"

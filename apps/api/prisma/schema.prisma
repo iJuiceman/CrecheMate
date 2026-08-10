@@ -1,0 +1,160 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// ── Staff ───────────────────────────────────────────────────────────────
+enum Role {
+  admin // manage settings, staff, and everything an educator can do
+  educator // day-to-day: families, children, check-in/out, payments
+}
+
+enum UserStatus {
+  active
+  suspended
+}
+
+model User {
+  id           String     @id @default(uuid())
+  email        String     @unique
+  passwordHash String     @map("password_hash")
+  firstName    String     @map("first_name")
+  lastName     String     @map("last_name")
+  role         Role       @default(educator)
+  status       UserStatus @default(active)
+  lastLoginAt  DateTime?  @map("last_login_at")
+  createdAt    DateTime   @default(now()) @map("created_at")
+
+  @@map("users")
+}
+
+// ── Families ────────────────────────────────────────────────────────────
+// The primary parent/guardian for a child. Their own contact details double
+// as the first emergency contact; additional emergency contacts live below.
+model Guardian {
+  id           String   @id @default(uuid())
+  firstName    String   @map("first_name")
+  lastName     String   @map("last_name")
+  relationship String? // mother / father / guardian / carer
+  phone        String
+  email        String?
+  addressLine  String?  @map("address_line")
+  suburb       String?
+  postcode     String?
+  notes        String?
+  createdAt    DateTime @default(now()) @map("created_at")
+
+  children Child[]
+
+  @@map("guardians")
+}
+
+model Child {
+  id         String   @id @default(uuid())
+  guardianId String   @map("guardian_id")
+  firstName  String   @map("first_name")
+  lastName   String   @map("last_name")
+  // Birth month (1-12) + year only — age is computed so it's never stale.
+  birthMonth Int?     @map("birth_month")
+  birthYear  Int?     @map("birth_year")
+  // Allergies / medical requirements — encrypted at the application layer.
+  medicalNotesEncrypted String? @map("medical_notes_encrypted")
+  active     Boolean  @default(true)
+  createdAt  DateTime @default(now()) @map("created_at")
+
+  guardian          Guardian           @relation(fields: [guardianId], references: [id])
+  emergencyContacts EmergencyContact[]
+  attendances       Attendance[]
+
+  @@index([guardianId])
+  @@map("children")
+}
+
+// Extra people (grandparent, neighbour…) reachable in an emergency and/or
+// authorised to collect the child.
+model EmergencyContact {
+  id           String   @id @default(uuid())
+  childId      String   @map("child_id")
+  name         String
+  relationship String?
+  phone        String
+  canPickup    Boolean  @default(true) @map("can_pickup")
+  createdAt    DateTime @default(now()) @map("created_at")
+
+  child Child @relation(fields: [childId], references: [id], onDelete: Cascade)
+
+  @@index([childId])
+  @@map("emergency_contacts")
+}
+
+// ── Attendance (pre-booked sessions AND walk-in drop-ins) ────────────────
+enum AttendanceStatus {
+  booked // pre-booked for a future window, not yet arrived
+  checked_in // currently in care
+  checked_out // collected
+  cancelled
+  no_show
+}
+
+enum PaymentStatus {
+  unpaid
+  paid
+  waived
+}
+
+enum PaymentMethod {
+  cash
+  card
+  eftpos
+  online
+}
+
+model Attendance {
+  id             String           @id @default(uuid())
+  childId        String           @map("child_id")
+  // The service day (local). scheduledStart/End are set for a pre-booking;
+  // a drop-in is created straight into checked_in with no schedule.
+  serviceDate    DateTime         @map("service_date")
+  scheduledStart DateTime?        @map("scheduled_start")
+  scheduledEnd   DateTime?        @map("scheduled_end")
+  isDropIn       Boolean          @default(false) @map("is_drop_in")
+  status         AttendanceStatus @default(booked)
+  checkInAt      DateTime?        @map("check_in_at")
+  checkOutAt     DateTime?        @map("check_out_at")
+  checkedInById  String?          @map("checked_in_by_id")
+  checkedOutById String?          @map("checked_out_by_id")
+  // Fee finalised at check-out from the actual time in care (or estimated
+  // from the booked window before then), on the site hourly rate.
+  feeCents              Int            @default(0) @map("fee_cents")
+  paymentStatus         PaymentStatus  @default(unpaid) @map("payment_status")
+  paymentMethod         PaymentMethod? @map("payment_method")
+  stripePaymentIntentId String?        @map("stripe_payment_intent_id")
+  paidAt                DateTime?      @map("paid_at")
+  notes          String?
+  createdAt      DateTime         @default(now()) @map("created_at")
+
+  child Child @relation(fields: [childId], references: [id])
+
+  @@index([serviceDate])
+  @@index([status])
+  @@map("attendances")
+}
+
+// ── Facility (single onsite service) ────────────────────────────────────
+model FacilitySettings {
+  id              String   @id @default(uuid())
+  name            String   @default("CrecheMate")
+  timezone        String   @default("Australia/Sydney")
+  capacity        Int      @default(20) // max concurrent children
+  hourlyRateCents Int      @default(1000) @map("hourly_rate_cents")
+  openTime        String   @default("07:00") @map("open_time")
+  closeTime       String   @default("18:00") @map("close_time")
+  abn             String?
+  updatedAt       DateTime @updatedAt @map("updated_at")
+
+  @@map("facility_settings")
+}
