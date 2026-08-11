@@ -1,0 +1,2 @@
+# Keeps apps/web/public present in git (Next.js standalone + the web
+# Dockerfile COPY require this directory to exist, even when empty).
