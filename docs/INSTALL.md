@@ -317,10 +317,61 @@ docker image prune -f
 
 Take a DB backup (step 9) before this.
 
-**Remote management.** Since there's no inbound SSH at the client, set up an
-outbound remote-access agent (e.g. Tailscale) so you can SSH in for the monthly
-image refresh without opening any ports. Automatic security updates (step 2)
-keep the box patched regardless.
+**Remote management.** Since there's no inbound SSH at the client, set up
+Tailscale (below) so you can SSH in for the monthly image refresh without
+opening any ports. Automatic security updates (step 2) keep the box patched
+regardless.
+
+## Remote access (Tailscale)
+
+Tailscale is an outbound mesh VPN — the box dials out, so you get SSH from
+anywhere with **no router config and no open ports** at the client site. **Do
+this while you still have local access to the box**, so you can confirm it works
+before shipping.
+
+**On your laptop** (the device you'll connect from):
+
+1. Create a free account at [tailscale.com](https://tailscale.com).
+2. Install Tailscale ([tailscale.com/download](https://tailscale.com/download))
+   and sign in with that account.
+
+**On the CrecheMate box:**
+
+3. Install and bring it up:
+
+   ```bash
+   curl -fsSL https://tailscale.com/install.sh | sh
+   sudo tailscale up
+   ```
+
+   `tailscale up` prints a `https://login.tailscale.com/a/…` URL — open it on
+   your laptop (same account) and approve the machine.
+
+4. Note the box's tailnet IP (a `100.x.y.z` that never changes, even when the
+   box moves networks), and confirm the service is enabled on boot:
+
+   ```bash
+   tailscale ip -4
+   sudo systemctl is-enabled tailscaled     # → enabled
+   ```
+
+**In the admin console** ([login.tailscale.com/admin/machines](https://login.tailscale.com/admin/machines)):
+
+5. Find the box (named `crechemate`) → **⋯** → **Disable key expiry**. Important
+   for an unattended box — otherwise its key expires (~6 months) and it drops
+   off the tailnet until re-authed in person. Optionally enable **MagicDNS** so
+   you can use the name instead of the IP.
+
+**Test from your laptop** (Tailscale running):
+
+```bash
+ssh mal@100.x.y.z        # the IP from step 4  (or: ssh mal@crechemate with MagicDNS)
+```
+
+At the client site there's nothing to do — when the box powers on and gets
+internet, `tailscaled` reconnects outbound on its own and stays reachable at the
+same address. No firewall changes are needed (it's outbound-only and works with
+`ufw` on). Don't forward SSH on the client router — Tailscale replaces that.
 
 ## Quick troubleshooting
 
