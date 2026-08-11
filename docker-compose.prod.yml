@@ -1,0 +1,50 @@
+# Production (onsite facility server) app services, layered on docker-compose.yml.
+#
+#   docker compose -f docker-compose.yml -f docker-compose.prod.yml up -d --build
+#
+# Difference from docker-compose.dev.yml: the API is published on 127.0.0.1
+# only. Staff reach the API same-origin through the web app (/api), and nginx
+# reaches it on localhost for the client site — nothing needs the API on the
+# LAN. The web app is published on all interfaces so staff devices on the LAN
+# can use http://<server-ip>:5001, while the router forwards only 80/443.
+services:
+  api:
+    build:
+      context: .
+      dockerfile: apps/api/Dockerfile
+    restart: unless-stopped
+    environment:
+      - DATABASE_URL=postgresql://crechemate:${POSTGRES_PASSWORD}@postgres:5432/crechemate
+      - JWT_SECRET=${JWT_SECRET}
+      - CHILD_DATA_ENCRYPTION_KEY=${CHILD_DATA_ENCRYPTION_KEY}
+      - STRIPE_SECRET_KEY=${STRIPE_SECRET_KEY}
+      - PAYMENTS_TEST_MODE=${PAYMENTS_TEST_MODE}
+      - CORS_ORIGINS=${CORS_ORIGINS:-http://localhost:5001}
+    ports:
+      - "127.0.0.1:5000:5000" # localhost only — reached via /api (web + nginx)
+    depends_on:
+      - postgres
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
+
+  web:
+    build:
+      context: .
+      dockerfile: apps/web/Dockerfile
+      args:
+        # Same-origin API — leave as /api. Works on the LAN (Next proxies /api
+        # to the API container) and behind nginx on the client domain.
+        NEXT_PUBLIC_API_URL: ${NEXT_PUBLIC_API_URL:-/api}
+    restart: unless-stopped
+    ports:
+      - "5001:3000" # LAN staff access + localhost for nginx (client site)
+    depends_on:
+      - api
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
