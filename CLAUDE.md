@@ -19,6 +19,12 @@ session online** (`/book`) with card prepayment, which staff confirm.
 
 - `apps/api` — NestJS 10 + Prisma 5 + PostgreSQL 16. Port **5000**.
 - `apps/web` — Next.js 14 (App Router, Tailwind). Port **5001** (container 3000).
+- **Networking**: the browser calls the API **same-origin at `/api`**
+  (`NEXT_PUBLIC_API_URL=/api`). On a domain, the box's system nginx maps `/api/`
+  → api:5000; on the LAN, a Next rewrite (`next.config.js`) proxies it. External
+  access (`crechemate.tectel.com.au` staff / `crecheclient.tectel.com.au`
+  parents) is via nginx + certbot — see `deploy/nginx/crechemate.conf` and
+  `docs/EXTERNAL_ACCESS.md`. API runs with `trust proxy` for real client IPs.
 - Postgres **5434** (localhost only). Ports offset from Racqueteer (3000-3002/
   5432) and IRentIT (4000-4002/5433) since all three run on the same box.
 

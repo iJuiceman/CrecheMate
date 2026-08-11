@@ -5,6 +5,9 @@ import { AppModule } from "./app.module";
 
 async function bootstrap() {
   const app = await NestFactory.create(AppModule);
+  // Behind nginx (TLS termination + reverse proxy): trust the first proxy hop
+  // so req.ip / rate limiting see the real client address via X-Forwarded-For.
+  app.getHttpAdapter().getInstance().set("trust proxy", 1);
   app.use(helmet());
   app.enableCors({
     origin: (process.env.CORS_ORIGINS ?? "http://localhost:5001").split(",").filter(Boolean),
