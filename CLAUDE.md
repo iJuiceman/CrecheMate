@@ -112,6 +112,14 @@ docker compose -f docker-compose.yml -f docker-compose.dev.yml build && \
 New Prisma models: add a migration; the API container runs
 `prisma migrate deploy` on start.
 
+- **Reporting** (`reports` module, **admin-only** via RolesGuard): summary +
+  financial + attendance/occupancy + families + online-bookings/staff, over a
+  facility-tz date range. Aggregated in memory (small data volumes). The web
+  Reports page (`(app)/reports`) has a date-range picker, tabs, KPI tiles,
+  inline-SVG charts (`reports/charts.tsx` — teal single-hue for magnitude, a
+  validated categorical set for payment-mix/booked-vs-dropin, all per the
+  data-viz method), tables, and per-tab CSV export (`lib/csv.ts`).
+
 ## Not yet built (backlog)
 
 - Receipts/PDF, reporting/exports, daily attendance sheet.

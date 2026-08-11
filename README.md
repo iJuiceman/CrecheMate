@@ -78,6 +78,14 @@ contact** details, needs no court booking, and runs on its own.
   online payments run in **test mode** (auto-succeed stub, so the whole flow
   works with no Stripe account). Unpaid checkouts are tracked as outstanding; a
   fee can also be waived.
+- **Reports** (admin): a Reports section with a date-range picker and tabs for
+  **Financials** (fees collected / outstanding / waived, by payment method,
+  online prepayments + refunds), **Attendance & occupancy** (sessions, hours,
+  drop-in vs booked, no-shows, peak occupancy vs capacity, court usage),
+  **Families & children** (active families, children by age, new registrations,
+  waiver status), and **Online bookings & staff** (requests confirmed/declined
+  with refunds, and who checked children in/out). Each tab has summary tiles,
+  charts, and a one-click **CSV export** to hand to your accountant.
 - **Settings** (admin): service name, capacity, hourly rate, opening hours,
   timezone, ABN.
 

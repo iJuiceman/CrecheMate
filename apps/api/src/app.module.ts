@@ -12,6 +12,7 @@ import { SettingsModule } from "./settings/settings.module";
 import { PaymentsModule } from "./payments/payments.module";
 import { IntakeModule } from "./intake/intake.module";
 import { BookingsModule } from "./bookings/bookings.module";
+import { ReportsModule } from "./reports/reports.module";
 
 @Module({
   imports: [
@@ -27,6 +28,7 @@ import { BookingsModule } from "./bookings/bookings.module";
     AttendanceModule,
     IntakeModule,
     BookingsModule,
+    ReportsModule,
   ],
   providers: [
     // Every route requires a signed-in staff member unless marked @Public().

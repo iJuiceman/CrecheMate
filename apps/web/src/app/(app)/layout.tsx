@@ -12,6 +12,7 @@ const NAV = [
   { href: "/attendance", label: "Bookings", icon: "📅" },
 ];
 const ADMIN_NAV = [
+  { href: "/reports", label: "Reports", icon: "📊" },
   { href: "/staff", label: "Staff", icon: "🧑‍🏫" },
   { href: "/settings", label: "Settings", icon: "⚙️" },
 ];
