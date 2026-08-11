@@ -26,6 +26,27 @@ server's LAN IP.
 
 ---
 
+## Quick path (steps 1–4 automated)
+
+If you'd rather not run steps 1–4 by hand, clone the repo and run the
+installer — it installs Docker, generates a `.env` with fresh secrets (it never
+overwrites an existing one), and builds + starts the stack:
+
+```bash
+cd /opt
+sudo mkdir -p crechemate && sudo chown "$USER":"$USER" crechemate
+git clone https://github.com/iJuiceman/CrecheMate.git crechemate   # use a GitHub token for the password
+cd crechemate
+./deploy/install.sh --domain crecheclient.tectel.com.au            # --domain optional
+```
+
+Then **back up `.env`** (step 9), do the **first‑run setup** (step 5), and
+**expose the parent site** (step 7 — nginx/DNS/router, which stay manual). The
+detailed steps below explain each part if you want to do it by hand or
+understand what the script did.
+
+---
+
 ## 1. Prepare the server
 
 Give the server a **static LAN IP** (or a DHCP reservation) so staff bookmarks
