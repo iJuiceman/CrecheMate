@@ -264,6 +264,64 @@ docker compose -f docker-compose.yml -f docker-compose.prod.yml up -d --build
 Database migrations run automatically on API start. Take a DB backup (step 9)
 before updating.
 
+## Keeping it patched
+
+Once the box is at the client site you probably **won't have inbound SSH**
+(only 80/443 are forwarded), so it needs to stay patched largely on its own.
+Two layers: the Ubuntu OS, and the app's Docker images.
+
+**1. Patch the OS now (before it ships):**
+
+```bash
+sudo apt update
+sudo apt -y full-upgrade
+sudo apt -y autoremove --purge
+[ -f /var/run/reboot-required ] && echo "REBOOT NEEDED"   # if so: sudo reboot
+```
+
+A reboot is safe — the stack self-restarts (`restart: unless-stopped` + Docker
+starts on boot).
+
+**2. Turn on automatic security updates (recommended — it runs unattended):**
+
+```bash
+sudo apt -y install unattended-upgrades
+sudo dpkg-reconfigure -plow unattended-upgrades          # choose "Yes"
+
+# Auto-reboot for kernel updates in the small hours (app comes back on its own)
+sudo tee /etc/apt/apt.conf.d/51crechemate-reboot >/dev/null <<'EOF'
+Unattended-Upgrade::Automatic-Reboot "true";
+Unattended-Upgrade::Automatic-Reboot-Time "03:30";
+EOF
+```
+
+Verify:
+
+```bash
+cat /etc/apt/apt.conf.d/20auto-upgrades                  # both lines "1"
+sudo unattended-upgrades --dry-run --debug 2>&1 | tail -20
+```
+
+**3. Refresh the app's Docker images (periodic, ~monthly).** The OS updater
+doesn't touch what's *inside* the containers (Node, Postgres) — rebuild against
+the latest base images:
+
+```bash
+cd /opt/crechemate
+git pull                                                                       # also picks up app updates
+docker compose -f docker-compose.yml -f docker-compose.prod.yml build --pull   # re-pulls node:20-slim
+docker compose -f docker-compose.yml -f docker-compose.prod.yml pull           # updates postgres:16
+docker compose -f docker-compose.yml -f docker-compose.prod.yml up -d
+docker image prune -f
+```
+
+Take a DB backup (step 9) before this.
+
+**Remote management.** Since there's no inbound SSH at the client, set up an
+outbound remote-access agent (e.g. Tailscale) so you can SSH in for the monthly
+image refresh without opening any ports. Automatic security updates (step 2)
+keep the box patched regardless.
+
 ## Quick troubleshooting
 
 | Symptom | Check |
