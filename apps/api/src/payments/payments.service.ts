@@ -74,6 +74,7 @@ export class PaymentsService {
   async createIntent(
     amountCents: number,
     reference: string,
+    opts: { manualCapture?: boolean } = {},
   ): Promise<{ id: string; clientSecret: string; testMode: boolean; publishableKey: string | null }> {
     if (amountCents <= 0) throw new BadRequestException("Amount must be positive");
     const key = await this.secretKey();
@@ -86,6 +87,9 @@ export class PaymentsService {
       amount: amountCents,
       currency: "aud",
       automatic_payment_methods: { enabled: true },
+      // Online bookings authorise (hold) at booking and capture on staff
+      // approval, so a rejected booking is voided rather than refunded.
+      capture_method: opts.manualCapture ? "manual" : "automatic",
       description: "CrecheMate childcare fee",
       metadata: { crechemate_ref: reference },
     });
@@ -95,6 +99,57 @@ export class PaymentsService {
       testMode: false,
       publishableKey: await this.publishableKey(),
     };
+  }
+
+  /**
+   * Verify a payment is AUTHORISED (a manual-capture hold placed) for
+   * `amountCents` and `reference`, without capturing it. Used when a parent's
+   * card is held at booking time — the charge only happens on staff approval.
+   */
+  async assertAuthorized(paymentIntentId: string, amountCents: number, reference: string): Promise<void> {
+    if (paymentIntentId.startsWith("pi_test_")) {
+      if (!(await this.isTestMode())) throw new BadRequestException("Invalid payment reference");
+      const parts = paymentIntentId.split("_");
+      if (Number(parts[2]) !== amountCents) throw new BadRequestException("Payment amount mismatch");
+      if (Buffer.from(parts[3] ?? "", "hex").toString("utf8") !== reference) {
+        throw new BadRequestException("Payment reference mismatch");
+      }
+      return;
+    }
+    const key = await this.secretKey();
+    if (!key) throw new BadRequestException("Card payments aren't linked to a Stripe account");
+    const intent = await this.client(key).paymentIntents.retrieve(paymentIntentId);
+    if (intent.status !== "requires_capture") throw new BadRequestException("Card hasn't been authorised");
+    if (intent.amount_capturable !== amountCents) throw new BadRequestException("Payment amount mismatch");
+    if (intent.currency !== "aud") throw new BadRequestException("Payment currency mismatch");
+    if (intent.metadata?.crechemate_ref !== reference) throw new BadRequestException("Payment reference mismatch");
+  }
+
+  /** Capture a previously-authorised hold (charge the card). No-op stub in test mode. */
+  async capture(paymentIntentId: string): Promise<void> {
+    if (paymentIntentId.startsWith("pi_test_")) return;
+    const key = await this.secretKey();
+    if (!key) throw new BadRequestException("Card payments aren't linked to a Stripe account");
+    try {
+      const captured = await this.client(key).paymentIntents.capture(paymentIntentId);
+      if (captured.status !== "succeeded") throw new Error(`unexpected status ${captured.status}`);
+    } catch (e) {
+      this.logger.error(`Stripe capture failed for ${paymentIntentId}: ${(e as Error).message}`);
+      throw new BadRequestException("Couldn't capture the card hold — it may have expired. Ask the parent to re-book.");
+    }
+  }
+
+  /** Release an authorised-but-uncaptured hold (no money moves). Best-effort:
+   * a failure is logged, not thrown — an un-voided hold auto-expires (~7 days). */
+  async cancelAuthorization(paymentIntentId: string | null | undefined): Promise<void> {
+    if (!paymentIntentId || paymentIntentId.startsWith("pi_test_")) return;
+    const key = await this.secretKey();
+    if (!key) return;
+    try {
+      await this.client(key).paymentIntents.cancel(paymentIntentId);
+    } catch (e) {
+      this.logger.error(`Stripe hold cancel failed for ${paymentIntentId}: ${(e as Error).message}`);
+    }
   }
 
   /**
@@ -150,14 +205,19 @@ export class PaymentsService {
     this.stripeCache = undefined; // force a fresh client next call
   }
 
-  /** Refund a payment (e.g. when a booking request is declined). No-op for
-   * test-mode stubs, which never moved real money. */
-  async refund(paymentIntentId: string | null | undefined): Promise<void> {
+  /** Refund a captured payment (e.g. a late cancellation). Pass `amountCents`
+   * for a partial refund (the cancellation policy's percentage); omit for a
+   * full refund. No-op for test-mode stubs, which never moved real money. */
+  async refund(paymentIntentId: string | null | undefined, amountCents?: number): Promise<void> {
     if (!paymentIntentId || paymentIntentId.startsWith("pi_test_")) return;
+    if (amountCents !== undefined && amountCents <= 0) return; // nothing to refund
     const key = await this.secretKey();
     if (!key) return; // account was unlinked; nothing we can do here
     try {
-      await this.client(key).refunds.create({ payment_intent: paymentIntentId });
+      await this.client(key).refunds.create({
+        payment_intent: paymentIntentId,
+        ...(amountCents !== undefined ? { amount: amountCents } : {}),
+      });
     } catch (e) {
       this.logger.error(`Stripe refund failed for ${paymentIntentId}: ${(e as Error).message}`);
       throw new BadRequestException("Refund failed — issue it manually in the Stripe dashboard");

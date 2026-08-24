@@ -74,6 +74,7 @@ export class AttendanceService {
       feeCents: a.feeCents,
       paymentStatus: a.paymentStatus,
       paymentMethod: a.paymentMethod,
+      refundedCents: a.refundedCents ?? 0,
       notes: a.notes,
       child: a.child ? this.childCard(a.child) : null,
     };
@@ -367,12 +368,42 @@ export class AttendanceService {
     return this.serialize(updated);
   }
 
+  /**
+   * Cancel a booking that hasn't started. If it was paid, the late-cancellation
+   * policy applies: a full refund when cancelled at least `lateCancelWindowHours`
+   * before the session start, otherwise only `lateCancelRefundPercent`. Online
+   * (card) payments are refunded through Stripe; other methods just record the
+   * amount owed back for staff to hand over.
+   */
   async cancel(id: string) {
+    const f = await this.facility();
     const a = await this.prisma.attendance.findUnique({ where: { id } });
     if (!a) throw new NotFoundException("Attendance not found");
     if (a.status !== "booked") throw new BadRequestException("Only a booking that hasn't started can be cancelled");
-    await this.prisma.attendance.update({ where: { id }, data: { status: "cancelled" } });
-    return { ok: true };
+
+    let refundedCents = 0;
+    let refundPercent = 0;
+    if (a.paymentStatus === "paid" && a.feeCents > 0) {
+      const start = a.scheduledStart ?? a.serviceDate;
+      const hoursUntilStart = (start.getTime() - Date.now()) / 3_600_000;
+      const fullRefund = hoursUntilStart >= f.lateCancelWindowHours;
+      refundPercent = fullRefund ? 100 : f.lateCancelRefundPercent;
+      refundedCents = Math.round((a.feeCents * refundPercent) / 100);
+      if (refundedCents > 0 && a.stripePaymentIntentId) {
+        // Full refund omits the amount; partial passes the reduced cents.
+        await this.payments.refund(a.stripePaymentIntentId, fullRefund ? undefined : refundedCents);
+      }
+    }
+
+    await this.prisma.attendance.update({
+      where: { id },
+      data: {
+        status: "cancelled",
+        refundedCents,
+        refundedAt: refundedCents > 0 ? new Date() : null,
+      },
+    });
+    return { ok: true, refundedCents, refundPercent };
   }
 
   async dashboard() {

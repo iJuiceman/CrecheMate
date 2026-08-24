@@ -93,11 +93,11 @@ export default function BookPage() {
         notes: notes.trim() || undefined,
       });
       if (req.testMode || !req.publishableKey) {
-        // No Stripe account linked — the stub payment already "succeeded".
+        // No Stripe account linked — the stub hold is auto-authorised.
         await api.post(`/bookings/${req.requestId}/pay`, { stripePaymentIntentId: req.paymentIntentId });
         setStep("done"); window.scrollTo(0, 0);
       } else {
-        setCard(req); // collect the card, then record on success
+        setCard(req); // collect the card (authorise the hold), then record it
       }
     } catch (e) {
       setError(e instanceof Error ? e.message : "Couldn't submit your booking.");
@@ -116,9 +116,9 @@ export default function BookPage() {
           <div className="mx-auto mb-4 grid h-20 w-20 place-items-center rounded-3xl bg-teal-light text-4xl">📅</div>
           <h1 className="font-display text-3xl font-bold text-ink">Booking requested</h1>
           <p className="mt-3 text-lg text-ink/70">
-            Thanks! We&apos;ve received your payment of <b>{money(quote?.feeCents ?? 0)}</b> and your booking for <b>{child.firstName}</b> on <b>{new Date(`${date}T${start}`).toLocaleDateString("en-AU", { weekday: "long", day: "numeric", month: "long" })}</b>, {start}–{end}.
+            Thanks! We&apos;ve placed a hold of <b>{money(quote?.feeCents ?? 0)}</b> on your card for <b>{child.firstName}</b> on <b>{new Date(`${date}T${start}`).toLocaleDateString("en-AU", { weekday: "long", day: "numeric", month: "long" })}</b>, {start}–{end}.
           </p>
-          <p className="mt-2 text-ink/60">{cfg.facilityName} will confirm shortly. If we can&apos;t accommodate it, you&apos;ll be fully refunded.</p>
+          <p className="mt-2 text-ink/60">{cfg.facilityName} will review it shortly. <b>Your card is only charged once we approve the booking</b> — if we can&apos;t accommodate it, the hold is released and you&apos;re not charged at all.</p>
           <button className="btn mt-8 px-6 py-3 text-base" onClick={() => { setStep("session"); setQuote(null); setParent({ firstName: "", lastName: "", phone: "", email: "" }); setChild({ firstName: "", lastName: "", birthMonth: "", birthYear: "" }); setNotes(""); setDate(""); setError(null); }}>
             Make another booking
           </button>
@@ -137,7 +137,7 @@ export default function BookPage() {
         <header className="mb-6 text-center">
           <div className="mx-auto mb-3 grid h-14 w-14 place-items-center rounded-2xl bg-teal text-2xl">🧸</div>
           <h1 className="font-display text-3xl font-bold text-ink">{cfg.facilityName} — Book a session</h1>
-          <p className="mt-1 text-ink/60">Pre-book a place for your child. Payment is taken now and refunded if we can&apos;t confirm.</p>
+          <p className="mt-1 text-ink/60">Pre-book a place for your child. Your card is held now but only charged once staff approve the booking.</p>
         </header>
 
         {step === "session" && (
@@ -220,9 +220,9 @@ export default function BookPage() {
 
             {error && <p className="rounded-xl bg-coral/10 px-4 py-3 text-sm text-coral">{error}</p>}
             <button className="btn w-full px-6 py-4 text-lg" disabled={!detailsValid || busy} onClick={payAndSubmit}>
-              {busy ? "Please wait…" : `Pay ${money(quote?.feeCents ?? estFee)} & request booking`}
+              {busy ? "Please wait…" : `Hold ${money(quote?.feeCents ?? estFee)} & request booking`}
             </button>
-            <p className="text-center text-xs text-ink/40">You&apos;ll be charged now. If we can&apos;t confirm the session, you&apos;re fully refunded.</p>
+            <p className="text-center text-xs text-ink/40">Your card is held, not charged. You&apos;re only charged once staff approve; if we can&apos;t confirm, the hold is released.</p>
           </div>
         )}
       </div>
@@ -232,8 +232,9 @@ export default function BookPage() {
           clientSecret={card.clientSecret}
           publishableKey={card.publishableKey!}
           feeCents={card.feeCents}
-          title={`Pay ${money(card.feeCents)}`}
-          subtitle="Enter your card details to secure the booking."
+          title={`Hold ${money(card.feeCents)}`}
+          subtitle="Your card is held to secure the booking — you're only charged once staff approve it."
+          submitLabel={`Hold ${money(card.feeCents)}`}
           onClose={() => setCard(null)}
           onConfirmed={async () => {
             try {
@@ -242,7 +243,7 @@ export default function BookPage() {
               setStep("done");
               window.scrollTo(0, 0);
             } catch (e) {
-              setError(e instanceof Error ? e.message : "Charged, but couldn't record it — please contact us.");
+              setError(e instanceof Error ? e.message : "Card held, but couldn't record it — please contact us.");
               setCard(null);
             }
           }}

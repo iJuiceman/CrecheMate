@@ -131,7 +131,8 @@ export class BookingsService {
       },
     });
 
-    const intent = await this.payments.createIntent(feeCents, `booking:${request.id}`);
+    // Manual capture: the card is only HELD now; it's charged when staff approve.
+    const intent = await this.payments.createIntent(feeCents, `booking:${request.id}`, { manualCapture: true });
     return {
       requestId: request.id,
       feeCents,
@@ -142,16 +143,18 @@ export class BookingsService {
     };
   }
 
-  /** Public: record that the parent's prepayment succeeded. */
+  /** Public: record that the parent's card was authorised (hold placed). The
+   * booking then waits for a staff member to approve (capture) or decline
+   * (void the hold — no refund). */
   async payRequest(id: string, stripePaymentIntentId: string) {
     const request = await this.prisma.bookingRequest.findUnique({ where: { id } });
     if (!request) throw new NotFoundException("Booking request not found");
     if (request.status !== "pending") throw new BadRequestException("This request has already been processed");
-    if (request.paymentStatus === "paid") return { ok: true };
-    await this.payments.assertSucceeded(stripePaymentIntentId, request.feeCents, `booking:${id}`);
+    if (request.paymentStatus === "authorized" || request.paymentStatus === "paid") return { ok: true };
+    await this.payments.assertAuthorized(stripePaymentIntentId, request.feeCents, `booking:${id}`);
     await this.prisma.bookingRequest.update({
       where: { id },
-      data: { paymentStatus: "paid", stripePaymentIntentId, paidAt: new Date() },
+      data: { paymentStatus: "authorized", stripePaymentIntentId },
     });
     return { ok: true };
   }
@@ -208,26 +211,26 @@ export class BookingsService {
     };
   }
 
-  /** Staff: paid, still-pending requests waiting for a decision. */
+  /** Staff: card-authorised, still-pending requests waiting for a decision. */
   async listRequests() {
     const rows = await this.prisma.bookingRequest.findMany({
-      where: { status: "pending", paymentStatus: "paid" },
+      where: { status: "pending", paymentStatus: "authorized" },
       orderBy: { requestedStart: "asc" },
     });
     return Promise.all(rows.map(async (r) => this.serializeRequest(r, await this.suggestMatch(r))));
   }
 
   async pendingCount(): Promise<number> {
-    return this.prisma.bookingRequest.count({ where: { status: "pending", paymentStatus: "paid" } });
+    return this.prisma.bookingRequest.count({ where: { status: "pending", paymentStatus: "authorized" } });
   }
 
-  /** Staff: confirm a request → create the real (already-paid) booking. Either
-   * matches an existing child, or creates a new family from the request. */
+  /** Staff: approve a request → capture the held card and create the booking.
+   * Either matches an existing child, or creates a new family from the request. */
   async confirm(actor: JwtPayload, id: string, opts: { childId?: string; createNewFamily?: boolean }) {
     const request = await this.prisma.bookingRequest.findUnique({ where: { id } });
     if (!request) throw new NotFoundException("Booking request not found");
     if (request.status !== "pending") throw new BadRequestException("This request has already been processed");
-    if (request.paymentStatus !== "paid") throw new BadRequestException("This request hasn't been paid");
+    if (request.paymentStatus !== "authorized") throw new BadRequestException("This request's card isn't authorised");
 
     // Atomically claim the request so two staff confirming at once can't both
     // create a booking (which would oversell capacity and orphan one booking).
@@ -285,6 +288,12 @@ export class BookingsService {
     const child = await this.prisma.child.findFirst({ where: { id: childId, active: true } });
     if (!child) throw new NotFoundException("Child not found");
 
+    // Capture the held card now — approval is when the money actually moves. If
+    // capture fails (e.g. the hold expired), this throws and the caller releases
+    // the claim so the request returns to pending.
+    if (request.stripePaymentIntentId) await this.payments.capture(request.stripePaymentIntentId);
+    const capturedAt = new Date();
+
     const booking = await this.attendance.createConfirmedBooking({
       childId,
       start: request.requestedStart,
@@ -293,7 +302,7 @@ export class BookingsService {
       court: request.court,
       courtBookingName: request.courtBookingName,
       stripePaymentIntentId: request.stripePaymentIntentId,
-      paidAt: request.paidAt,
+      paidAt: capturedAt, // cash-basis: dated to the capture, not the booking
       notes: request.notes,
     });
 
@@ -306,18 +315,19 @@ export class BookingsService {
     return { ok: true, attendanceId: booking.id };
   }
 
-  /** Staff: decline a request → refund the prepayment. */
+  /** Staff: decline a request → release the card hold (no charge, no refund). */
   async decline(actor: JwtPayload, id: string, reason?: string) {
     const request = await this.prisma.bookingRequest.findUnique({ where: { id } });
     if (!request) throw new NotFoundException("Booking request not found");
     if (request.status !== "pending") throw new BadRequestException("This request has already been processed");
 
-    // Atomically claim so concurrent declines can't both fire a refund. Only the
-    // caller who actually flips pending→declined proceeds to refund.
+    // Atomically claim so concurrent declines can't both act. The held card was
+    // never charged, so we just void the authorisation — no refund is issued.
     const claim = await this.prisma.bookingRequest.updateMany({
       where: { id, status: "pending" },
       data: {
         status: "declined",
+        paymentStatus: "unpaid", // the hold is released; nothing was captured
         decidedAt: new Date(),
         decidedById: actor.sub,
         notes: reason ? `${request.notes ? request.notes + " · " : ""}Declined: ${reason}` : request.notes,
@@ -325,9 +335,9 @@ export class BookingsService {
     });
     if (claim.count === 0) throw new BadRequestException("This request has already been processed");
 
-    if (request.paymentStatus === "paid") {
-      await this.payments.refund(request.stripePaymentIntentId);
+    if (request.paymentStatus === "authorized") {
+      await this.payments.cancelAuthorization(request.stripePaymentIntentId);
     }
-    return { ok: true, refunded: request.paymentStatus === "paid" };
+    return { ok: true, released: request.paymentStatus === "authorized" };
   }
 }

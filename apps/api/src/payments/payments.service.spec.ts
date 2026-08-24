@@ -39,3 +39,24 @@ describe("PaymentsService — PaymentIntent reference binding (replay guard)", (
     await expect(testModeService().createIntent(0, "booking:x")).rejects.toThrow(BadRequestException);
   });
 });
+
+describe("PaymentsService — authorise/hold flow (manual capture)", () => {
+  it("accepts an authorised hold for the exact amount and reference", async () => {
+    const svc = testModeService();
+    const intent = await svc.createIntent(2500, "booking:hold1", { manualCapture: true });
+    await expect(svc.assertAuthorized(intent.id, 2500, "booking:hold1")).resolves.toBeUndefined();
+  });
+
+  it("rejects an authorised hold replayed against another booking", async () => {
+    const svc = testModeService();
+    const intent = await svc.createIntent(2500, "booking:hold1", { manualCapture: true });
+    await expect(svc.assertAuthorized(intent.id, 2500, "booking:hold2")).rejects.toThrow(/reference mismatch/i);
+  });
+
+  it("capture and cancelAuthorization are safe no-ops on a test stub", async () => {
+    const svc = testModeService();
+    const intent = await svc.createIntent(2500, "booking:hold1", { manualCapture: true });
+    await expect(svc.capture(intent.id)).resolves.toBeUndefined();
+    await expect(svc.cancelAuthorization(intent.id)).resolves.toBeUndefined();
+  });
+});

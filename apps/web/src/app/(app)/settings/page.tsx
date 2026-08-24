@@ -25,6 +25,8 @@ export default function SettingsPage() {
         name: s.name,
         capacity: s.capacity,
         hourlyRateCents: s.hourlyRateCents,
+        lateCancelWindowHours: s.lateCancelWindowHours,
+        lateCancelRefundPercent: s.lateCancelRefundPercent,
         openTime: s.openTime,
         closeTime: s.closeTime,
         timezone: s.timezone,
@@ -90,6 +92,17 @@ export default function SettingsPage() {
           <div><label className="label">Opens</label><input type="time" className="field" value={s.openTime} onChange={(e) => setS({ ...s, openTime: e.target.value })} /></div>
           <div><label className="label">Closes</label><input type="time" className="field" value={s.closeTime} onChange={(e) => setS({ ...s, closeTime: e.target.value })} /></div>
         </div>
+        <div className="grid grid-cols-2 gap-3">
+          <div>
+            <label className="label">Late-cancel window (hours)</label>
+            <input type="number" min={0} max={168} className="field" value={s.lateCancelWindowHours} onChange={(e) => setS({ ...s, lateCancelWindowHours: Number(e.target.value) })} />
+          </div>
+          <div>
+            <label className="label">Late-cancel refund (%)</label>
+            <input type="number" min={0} max={100} className="field" value={s.lateCancelRefundPercent} onChange={(e) => setS({ ...s, lateCancelRefundPercent: Number(e.target.value) })} />
+          </div>
+        </div>
+        <p className="-mt-1 text-xs text-ink/50">A paid booking cancelled within {s.lateCancelWindowHours}h of the session start is refunded {s.lateCancelRefundPercent}%; earlier cancellations get 100%.</p>
         <div className="grid grid-cols-2 gap-3">
           <div><label className="label">Timezone</label><input className="field" value={s.timezone} onChange={(e) => setS({ ...s, timezone: e.target.value })} /></div>
           <div><label className="label">ABN (for receipts, optional)</label><input className="field" value={s.abn ?? ""} onChange={(e) => setS({ ...s, abn: e.target.value })} /></div>

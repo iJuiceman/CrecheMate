@@ -60,16 +60,28 @@ session online** (`/book`) with card prepayment, which staff confirm.
 - Phone numbers are validated as Australian (`common/phone.validator.ts`,
   `IsAuPhone`) on the intake, booking, and staff family forms; the web mirrors
   the rule in `lib/phone.ts`.
-- External bookings (`bookings` module) are **request → staff-confirm**. Public
-  routes (`GET /bookings/config`, `POST /bookings/quote`, `POST /bookings`,
-  `POST /bookings/:id/pay`) are `@Public()` and **rate-limited** (ThrottlerGuard,
-  30/min; same on intake). A parent **prepays** the estimated fee (Stripe) at
-  submit; the request sits in `BookingRequest` (status `pending`, `paid`). Staff
-  confirm → `AttendanceService.createConfirmedBooking` (capacity-enforced,
-  marks the booking paid) matched to an existing child or a new family; decline
-  → `PaymentsService.refund` (no-op for test-mode stubs). Pending paid requests
-  count toward a window's availability so a slot isn't oversold before a
-  decision; capacity is authoritatively re-checked at confirm.
+- External bookings (`bookings` module) are **request → staff-approve**, with
+  the card **authorised (held) not charged** until approval. Public routes
+  (`GET /bookings/config`, `POST /bookings/quote`, `POST /bookings`,
+  `POST /bookings/:id/pay`) are `@Public()` and **rate-limited** (30/min). Flow:
+  `POST /bookings` creates the `BookingRequest` (`pending`, `unpaid`) and a
+  **manual-capture** PaymentIntent (`createIntent(..., { manualCapture: true })`);
+  the parent's card is authorised via Elements; `POST /bookings/:id/pay` records
+  `paymentStatus: authorized` (`assertAuthorized`, NOT captured). Staff **approve**
+  (`confirm`) → `PaymentsService.capture` charges the held card, then
+  `createConfirmedBooking` (capacity-enforced) with `paidAt` = capture time;
+  staff **decline** → `PaymentsService.cancelAuthorization` voids the hold (no
+  charge, **no refund**). So rejected bookings never need a refund. Holds expire
+  in ~7 days, so `capture` can fail (hold lapsed) — confirm surfaces that and
+  rolls the claim back to pending. Confirm/decline atomically claim the request
+  (`updateMany where status=pending`) so they can't double-process. Authorised
+  pending requests count toward availability; capacity is re-checked at confirm.
+- **Cancellation policy**: cancelling a paid booking (`POST /attendance/:id/cancel`)
+  refunds 100% if more than `FacilitySettings.lateCancelWindowHours` (default 24)
+  before the session start, otherwise `lateCancelRefundPercent` (default 50%).
+  Card payments refund via Stripe (partial = pass amount); the amount is recorded
+  on `Attendance.refundedCents`/`refundedAt`. Both knobs are admin-editable in
+  Settings. Staff-initiated (parents have no login).
 - Making the parent pages reachable from the internet: see
   `docs/EXTERNAL_ACCESS.md` (reverse proxy + TLS, `NEXT_PUBLIC_API_URL` +
   `CORS_ORIGINS`).

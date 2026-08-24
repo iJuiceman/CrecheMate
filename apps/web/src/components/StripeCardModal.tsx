@@ -18,12 +18,17 @@ interface Props {
   feeCents: number;
   title?: string;
   subtitle?: string;
-  onConfirmed: () => void; // card charged — record the payment
+  // Label for the submit button (e.g. "Pay $10" for a charge, "Confirm card"
+  // for an authorisation hold). Defaults to a Pay label.
+  submitLabel?: string;
+  onConfirmed: () => void; // card charged or authorised — record it
   onClose: () => void;
 }
 
-/** Collects and confirms a real card payment via Stripe Elements. */
-export default function StripeCardModal({ clientSecret, publishableKey, feeCents, title, subtitle, onConfirmed, onClose }: Props) {
+/** Collects and confirms a card payment via Stripe Elements. Works for both an
+ *  immediate charge (status → succeeded) and a manual-capture hold (status →
+ *  requires_capture); both are treated as success. */
+export default function StripeCardModal({ clientSecret, publishableKey, feeCents, title, subtitle, submitLabel, onConfirmed, onClose }: Props) {
   const stripePromise = useMemo(() => stripeFor(publishableKey), [publishableKey]);
   return (
     <div className="fixed inset-0 z-[60] grid place-items-center bg-ink/40 p-4" onClick={onClose}>
@@ -31,14 +36,14 @@ export default function StripeCardModal({ clientSecret, publishableKey, feeCents
         <h2 className="font-display text-lg font-bold text-ink">{title ?? `Card payment · ${money(feeCents)}`}</h2>
         <p className="mt-1 text-sm text-ink/60">{subtitle ?? "Enter the card details to charge the fee."}</p>
         <Elements stripe={stripePromise} options={{ clientSecret, appearance: { theme: "stripe" } }}>
-          <CardForm feeCents={feeCents} onConfirmed={onConfirmed} onClose={onClose} />
+          <CardForm feeCents={feeCents} submitLabel={submitLabel} onConfirmed={onConfirmed} onClose={onClose} />
         </Elements>
       </div>
     </div>
   );
 }
 
-function CardForm({ feeCents, onConfirmed, onClose }: { feeCents: number; onConfirmed: () => void; onClose: () => void }) {
+function CardForm({ feeCents, submitLabel, onConfirmed, onClose }: { feeCents: number; submitLabel?: string; onConfirmed: () => void; onClose: () => void }) {
   const stripe = useStripe();
   const elements = useElements();
   const [busy, setBusy] = useState(false);
@@ -59,7 +64,9 @@ function CardForm({ feeCents, onConfirmed, onClose }: { feeCents: number; onConf
       setBusy(false);
       return;
     }
-    if (paymentIntent?.status === "succeeded") {
+    // "succeeded" = charged (immediate capture); "requires_capture" = card
+    // authorised/held (manual capture, captured later on staff approval).
+    if (paymentIntent?.status === "succeeded" || paymentIntent?.status === "requires_capture") {
       onConfirmed();
       return;
     }
@@ -73,7 +80,7 @@ function CardForm({ feeCents, onConfirmed, onClose }: { feeCents: number; onConf
       {err && <p className="rounded-lg bg-coral/10 px-3 py-2 text-sm text-coral">{err}</p>}
       <div className="flex gap-2">
         <button type="button" className="btn-secondary flex-1" onClick={onClose} disabled={busy}>Cancel</button>
-        <button type="submit" className="btn flex-1" disabled={busy || !stripe}>{busy ? "Charging…" : `Pay ${money(feeCents)}`}</button>
+        <button type="submit" className="btn flex-1" disabled={busy || !stripe}>{busy ? "Please wait…" : (submitLabel ?? `Pay ${money(feeCents)}`)}</button>
       </div>
     </form>
   );

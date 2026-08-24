@@ -110,6 +110,7 @@ enum AttendanceStatus {
 
 enum PaymentStatus {
   unpaid
+  authorized // card hold placed (online booking), not yet captured
   paid
   waived
 }
@@ -151,6 +152,10 @@ model Attendance {
   // Multiple NULLs are allowed, so unpaid/cash rows are unaffected.
   stripePaymentIntentId String?        @unique @map("stripe_payment_intent_id")
   paidAt                DateTime?      @map("paid_at")
+  // Money given back when a paid booking is cancelled (late-cancel policy).
+  // feeCents stays the amount charged; net = feeCents - refundedCents.
+  refundedCents         Int            @default(0) @map("refunded_cents")
+  refundedAt            DateTime?      @map("refunded_at")
   notes          String?
   createdAt      DateTime         @default(now()) @map("created_at")
 
@@ -289,6 +294,11 @@ model FacilitySettings {
   timezone        String   @default("Australia/Sydney")
   capacity        Int      @default(20) // max concurrent children
   hourlyRateCents Int      @default(1000) @map("hourly_rate_cents")
+  // Cancellation policy: a paid booking cancelled within this many hours of the
+  // session start is refunded only this percentage; earlier cancellations get
+  // 100%. Applied by staff (parents have no login).
+  lateCancelWindowHours   Int @default(24) @map("late_cancel_window_hours")
+  lateCancelRefundPercent Int @default(50) @map("late_cancel_refund_percent")
   openTime        String   @default("07:00") @map("open_time")
   closeTime       String   @default("18:00") @map("close_time")
   abn             String?

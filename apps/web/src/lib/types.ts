@@ -38,7 +38,7 @@ export interface Guardian {
 }
 
 export type AttendanceStatus = "booked" | "checked_in" | "checked_out" | "cancelled" | "no_show";
-export type PaymentStatus = "unpaid" | "paid" | "waived";
+export type PaymentStatus = "unpaid" | "authorized" | "paid" | "waived";
 
 export interface Attendance {
   id: string;
@@ -53,6 +53,7 @@ export interface Attendance {
   feeCents: number;
   paymentStatus: PaymentStatus;
   paymentMethod: string | null;
+  refundedCents: number;
   notes: string | null;
   child: {
     id: string;
@@ -90,6 +91,8 @@ export interface Settings {
   timezone: string;
   capacity: number;
   hourlyRateCents: number;
+  lateCancelWindowHours: number;
+  lateCancelRefundPercent: number;
   openTime: string;
   closeTime: string;
   abn: string | null;

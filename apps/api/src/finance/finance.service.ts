@@ -90,7 +90,7 @@ export class FinanceService {
     const tz = f.timezone;
     const r = this.range(tz, from, to);
 
-    const [payments, prepayments, refundedRequests, serviceWindow] = await Promise.all([
+    const [payments, prepayments, refundedRequests, serviceWindow, attendanceRefunds] = await Promise.all([
       // Money in (attendance fees): paid inside the window (any payment method).
       // Confirmed online bookings are attendances too, so they're counted here,
       // dated by their actual charge time (createConfirmedBooking carries paidAt).
@@ -120,6 +120,13 @@ export class FinanceService {
       this.prisma.attendance.findMany({
         where: { serviceDate: { gte: r.start, lt: r.end }, feeCents: { gt: 0 }, paymentStatus: { not: "paid" } },
         select: { feeCents: true, paymentStatus: true, status: true },
+      }),
+      // Money back out (attendance refunds): late-cancellation refunds, keyed by
+      // the refund date.
+      this.prisma.attendance.findMany({
+        where: { refundedCents: { gt: 0 }, refundedAt: { gte: r.start, lt: r.end } },
+        include: { child: { include: { guardian: true } } },
+        orderBy: { refundedAt: "asc" },
       }),
     ]);
 
@@ -163,9 +170,26 @@ export class FinanceService {
     }
 
     let refunded = 0;
-    const refunds: FinanceRefund[] = refundedRequests.map((q) => {
-      refunded += q.feeCents;
+    // Late-cancellation refunds on captured bookings (money out, by refund date).
+    const refunds: FinanceRefund[] = attendanceRefunds.map((a) => {
+      refunded += a.refundedCents;
+      const g = a.child?.guardian ?? null;
       return {
+        id: a.id,
+        invoiceNumber: this.invoiceNo(f.xeroInvoicePrefix, a.id),
+        creditNumber: this.invoiceNo(f.xeroInvoicePrefix, a.id, "R"),
+        paidDate: this.localDate(a.paidAt, tz) || this.localDate(a.serviceDate, tz),
+        refundDate: this.localDate(a.refundedAt, tz),
+        child: a.child ? `${a.child.firstName} ${a.child.lastName}` : "—",
+        parent: g ? `${g.firstName} ${g.lastName}` : "Creche customer",
+        parentEmail: g?.email ?? null,
+        amountCents: a.refundedCents,
+      };
+    });
+    // Legacy: refunds of declined online prepayments (pre-auth-capture bookings).
+    for (const q of refundedRequests) {
+      refunded += q.feeCents;
+      refunds.push({
         id: q.id,
         invoiceNumber: this.invoiceNo(f.xeroInvoicePrefix, q.id, "B"),
         creditNumber: this.invoiceNo(f.xeroInvoicePrefix, q.id, "R"),
@@ -175,8 +199,8 @@ export class FinanceService {
         parent: `${q.parentFirstName} ${q.parentLastName}`,
         parentEmail: q.parentEmail ?? null,
         amountCents: q.feeCents,
-      };
-    });
+      });
+    }
 
     let outstanding = 0, waived = 0;
     for (const a of serviceWindow) {

@@ -29,6 +29,18 @@ export class UpdateSettingsDto {
   hourlyRateCents?: number;
 
   @IsOptional()
+  @IsInt()
+  @Min(0)
+  @Max(168) // up to a week's notice
+  lateCancelWindowHours?: number;
+
+  @IsOptional()
+  @IsInt()
+  @Min(0)
+  @Max(100)
+  lateCancelRefundPercent?: number;
+
+  @IsOptional()
   @Matches(TIME, { message: "openTime must be HH:MM" })
   openTime?: string;
 

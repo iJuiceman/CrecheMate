@@ -27,6 +27,7 @@ export default function AttendancePage() {
   const [notice, setNotice] = useState<string | null>(null);
   const [takeBooking, setTakeBooking] = useState(false);
   const [courts, setCourts] = useState<string[]>([]);
+  const [policy, setPolicy] = useState({ hours: 24, percent: 50 });
 
   const loadDay = useCallback(() => {
     api.get<Attendance[]>(`/attendance?date=${date}`).then(setRows).catch((e) => setError(e.message));
@@ -36,11 +37,28 @@ export default function AttendancePage() {
   }, []);
   useEffect(loadDay, [loadDay]);
   useEffect(loadRequests, [loadRequests]);
-  useEffect(() => { api.get<Settings>("/settings").then((s) => setCourts(s.courts ?? [])).catch(() => {}); }, []);
+  useEffect(() => {
+    api.get<Settings>("/settings").then((s) => {
+      setCourts(s.courts ?? []);
+      setPolicy({ hours: s.lateCancelWindowHours ?? 24, percent: s.lateCancelRefundPercent ?? 50 });
+    }).catch(() => {});
+  }, []);
 
   async function cancel(id: string) {
-    try { await api.post(`/attendance/${id}/cancel`); loadDay(); }
-    catch (e) { setError(e instanceof Error ? e.message : "Couldn't cancel."); }
+    const a = rows.find((r) => r.id === id);
+    const paid = !!a && a.paymentStatus === "paid" && a.feeCents > 0;
+    const msg = paid
+      ? `Cancel this booking? Refund policy: 100% if more than ${policy.hours}h before the start, otherwise ${policy.percent}%. The refund is issued automatically.`
+      : "Cancel this booking?";
+    if (!confirm(msg)) return;
+    try {
+      const res = await api.post<{ refundedCents?: number; refundPercent?: number }>(`/attendance/${id}/cancel`);
+      setError(null);
+      setNotice(res.refundedCents ? `Booking cancelled — ${money(res.refundedCents)} refunded (${res.refundPercent}%).` : "Booking cancelled.");
+      loadDay();
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Couldn't cancel.");
+    }
   }
 
   return (
@@ -89,7 +107,7 @@ export default function AttendancePage() {
               </p>
             </div>
             <div className="flex items-center gap-3">
-              {a.feeCents > 0 && <span className="font-mono text-sm text-ink/70">{money(a.feeCents)}{a.paymentStatus === "paid" ? " ✓" : a.paymentStatus === "waived" ? " (waived)" : ""}</span>}
+              {a.feeCents > 0 && <span className="font-mono text-sm text-ink/70">{money(a.feeCents)}{a.paymentStatus === "paid" ? " ✓" : a.paymentStatus === "waived" ? " (waived)" : ""}{a.refundedCents > 0 ? ` · ${money(a.refundedCents)} refunded` : ""}</span>}
               <span className={`rounded-full px-2 py-0.5 text-xs font-semibold ${STATUS[a.status]}`}>{a.status.replace("_", " ")}</span>
               {a.status === "booked" && <button className="text-xs font-medium text-coral hover:underline" onClick={() => cancel(a.id)}>Cancel</button>}
             </div>
@@ -113,11 +131,11 @@ function RequestCard({ req, onDone, onError }: { req: BookingRequestRow; onDone:
     catch (e) { onError(e instanceof Error ? e.message : "That action failed."); setBusy(false); }
   }
 
-  const confirmFor = (childId: string) => act(() => api.post(`/bookings/requests/${req.id}/confirm`, { childId }), `Booking confirmed for ${req.childName}.`);
-  const confirmNew = () => act(() => api.post(`/bookings/requests/${req.id}/confirm`, { createNewFamily: true }), `New family created and booking confirmed for ${req.childName}.`);
+  const confirmFor = (childId: string) => act(() => api.post(`/bookings/requests/${req.id}/confirm`, { childId }), `Booking approved — ${money(req.feeCents)} charged for ${req.childName}.`);
+  const confirmNew = () => act(() => api.post(`/bookings/requests/${req.id}/confirm`, { createNewFamily: true }), `New family created and booking approved — ${money(req.feeCents)} charged for ${req.childName}.`);
   const decline = () => {
-    if (!confirm(`Decline this request and refund ${money(req.feeCents)} to ${req.parentName}?`)) return;
-    return act(() => api.post(`/bookings/requests/${req.id}/decline`, {}), `Request declined; ${money(req.feeCents)} refunded.`);
+    if (!confirm(`Decline this request? The ${money(req.feeCents)} hold on ${req.parentName}'s card is released — they are not charged.`)) return;
+    return act(() => api.post(`/bookings/requests/${req.id}/decline`, {}), `Request declined; card hold released (${req.parentName} not charged).`);
   };
 
   return (
@@ -130,7 +148,7 @@ function RequestCard({ req, onDone, onError }: { req: BookingRequestRow; onDone:
           <p className="mt-1 text-sm text-ink/60">Parent: {req.parentName} · {req.parentPhone}{req.parentEmail ? ` · ${req.parentEmail}` : ""}</p>
           {req.notes && <p className="mt-1 text-sm text-ink/60">Note: {req.notes}</p>}
         </div>
-        <span className="rounded-full bg-teal-light px-2 py-0.5 text-xs font-semibold text-teal-dark">{money(req.feeCents)} prepaid</span>
+        <span className="rounded-full bg-teal-light px-2 py-0.5 text-xs font-semibold text-teal-dark">{money(req.feeCents)} card held</span>
       </div>
 
       {req.suggestedMatch && (
@@ -143,12 +161,12 @@ function RequestCard({ req, onDone, onError }: { req: BookingRequestRow; onDone:
       <div className="mt-3 flex flex-wrap gap-2">
         {req.suggestedMatch && (
           <button className="btn px-3 py-1.5 text-xs" disabled={busy} onClick={() => confirmFor(req.suggestedMatch!.childId)}>
-            Confirm for {req.suggestedMatch.childName}
+            Approve &amp; charge for {req.suggestedMatch.childName}
           </button>
         )}
         <button className="btn-secondary px-3 py-1.5 text-xs" disabled={busy} onClick={() => setMatch(true)}>Match to a family…</button>
-        <button className="btn-secondary px-3 py-1.5 text-xs" disabled={busy} onClick={confirmNew}>Confirm as new family</button>
-        <button className="px-3 py-1.5 text-xs font-medium text-coral hover:underline" disabled={busy} onClick={decline}>Decline &amp; refund</button>
+        <button className="btn-secondary px-3 py-1.5 text-xs" disabled={busy} onClick={confirmNew}>Approve as new family</button>
+        <button className="px-3 py-1.5 text-xs font-medium text-coral hover:underline" disabled={busy} onClick={decline}>Decline (release hold)</button>
       </div>
 
       {match && <MatchModal req={req} onClose={() => setMatch(false)} onPick={(childId) => { setMatch(false); confirmFor(childId); }} />}

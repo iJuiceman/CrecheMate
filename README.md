@@ -21,15 +21,21 @@ contact** details, needs no court booking, and runs on its own.
 - **Online booking (parents + phone).** Parents pre-book a session from
   anywhere at `/book`: they pick a date and time within opening hours (with a
   live price and availability check), enter their and their child's details
-  (AU phone validated, birth month/year dropdowns), and **prepay the fee by
-  card** (Stripe). Every online booking is a **request** — it appears in a
-  staff queue with a suggested match to an existing family; staff **confirm**
-  (one click, matching an existing child or creating a new family) or
-  **decline** (which **auto-refunds**). Staff also take bookings over the phone
-  from the same page (“Take a booking”). Public endpoints are rate-limited and
-  never reveal who's already registered. See
+  (AU phone validated, birth month/year dropdowns), and their **card is held,
+  not charged** (Stripe authorization). Every online booking is a **request** —
+  it appears in a staff queue with a suggested match to an existing family;
+  staff **approve** (which **captures/charges** the held card, matching an
+  existing child or creating a new family) or **decline** (which **releases the
+  hold** — the parent is never charged, so no refund is needed). This
+  approve-to-charge model avoids booking-error refunds entirely. Staff also take
+  bookings over the phone from the same page (“Take a booking”). Public
+  endpoints are rate-limited and never reveal who's already registered. See
   [docs/EXTERNAL_ACCESS.md](docs/EXTERNAL_ACCESS.md) to expose it on your
   domain.
+- **Cancellation policy.** Cancelling a paid booking refunds 100% if it's more
+  than a configurable window (default 24 h) before the session start, or a
+  configurable percentage (default 50%) if later. Card refunds are issued
+  automatically through Stripe; the window and percentage are set under Settings.
 - **Parent self-registration (iPad kiosk).** Hand a parent an iPad at
   `/intake` and they register themselves: their details (name, relationship,
   phone, optional email — no address), the child with **birth month/year
@@ -112,9 +118,10 @@ contact** details, needs no court booking, and runs on its own.
   Sensitive values (passwords, medical notes, signatures, Stripe keys) are
   never stored; entries can't be edited or deleted and are pruned to a
   configurable retention window (`AUDIT_RETENTION_DAYS`, default ~2 years).
-- **Settings** (admin): service name, capacity, hourly rate, opening hours,
-  timezone, ABN, courts pick-list, waiver wording, Stripe account, and Xero
-  export coding (account code, tax type, invoice prefix).
+- **Settings** (admin): service name, capacity, hourly rate, cancellation policy
+  (late-cancel window + refund %), opening hours, timezone, ABN, courts
+  pick-list, waiver wording, Stripe account, and Xero export coding (account
+  code, tax type, invoice prefix).
 
 ## Stack
 
