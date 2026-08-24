@@ -13,6 +13,11 @@ services:
       # Origins allowed to call the API — set to this PC's address(es) in .env
       # (localhost for single-machine use, plus the LAN IP for other devices).
       - CORS_ORIGINS=${CORS_ORIGINS:-http://localhost:5001}
+      # This overlay exposes the API directly on the LAN (no nginx in front), so
+      # don't trust X-Forwarded-For — otherwise any client could spoof its IP in
+      # the audit log and rate-limit key. The prod overlay omits this (API is
+      # behind nginx on 127.0.0.1) so XFF from the trusted proxy is honoured.
+      - TRUST_PROXY=false
     ports:
       # All interfaces so the onsite PC's own browser AND other devices on the
       # LAN can reach it. The box sits behind a router that forwards nothing

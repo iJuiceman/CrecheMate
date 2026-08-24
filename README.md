@@ -105,6 +105,13 @@ contact** details, needs no court booking, and runs on its own.
   waiver status), and **Online bookings & staff** (requests confirmed/declined
   with refunds, and who checked children in/out). Each tab has summary tiles,
   charts, and a one-click **CSV export** to hand to your accountant.
+- **Audit log** (admin): an append-only trail of everything that changes state
+  in the app — who, what, when, from where — including denied and failed
+  attempts and public (parent) submissions. Filter by date, staff member,
+  action, or failures-only, and expand any entry for the request detail.
+  Sensitive values (passwords, medical notes, signatures, Stripe keys) are
+  never stored; entries can't be edited or deleted and are pruned to a
+  configurable retention window (`AUDIT_RETENTION_DAYS`, default ~2 years).
 - **Settings** (admin): service name, capacity, hourly rate, opening hours,
   timezone, ABN, courts pick-list, waiver wording, Stripe account, and Xero
   export coding (account code, tax type, invoice prefix).
@@ -145,17 +152,34 @@ cd apps/web && npm run dev                                    # web on :3000
 
 ## Security notes
 
-- Children's medical/allergy notes are encrypted at the application layer
-  before they ever reach the database (`CHILD_DATA_ENCRYPTION_KEY`).
+- Children's medical/allergy notes (and waiver signatures, incident details,
+  the Stripe secret) are encrypted at the application layer before they ever
+  reach the database (`CHILD_DATA_ENCRYPTION_KEY`). A boot-time canary detects a
+  wrong/rotated key and warns loudly rather than silently serving empty notes.
 - JWT auth on every route (`@Public()` marks the few open ones — setup status,
-  first-admin, login); admin-only routes are role-guarded.
-- Login is constant-time against account enumeration and returns a single
-  generic error.
+  first-admin, login); admin-only routes are role-guarded. Each request
+  re-checks the account against the database, so a **suspended or demoted staff
+  member loses access immediately**, not when their token expires.
+- Login is constant-time against account enumeration, returns a single generic
+  error, and is **rate-limited** (10/min/IP) against brute force. All routes sit
+  behind a global request-rate limit; public parent routes are tighter still.
+- **Card payments** are verified server-side against Stripe (status, amount,
+  currency) and **bound to the exact booking** they pay for (metadata reference
+  + a unique DB constraint), so a payment can't be replayed across bookings.
+- CSV/Xero exports are **formula-injection-safe** (spreadsheet formula cells are
+  neutralised) so an attacker-chosen name can't execute when a file is opened.
+- Behind a reverse proxy the app trusts `X-Forwarded-For` for real client IPs;
+  when exposed directly it doesn't (`TRUST_PROXY=false`), so the audit IP and
+  rate-limit key can't be spoofed.
 - Postgres is bound to localhost only.
+- Security- and money-critical logic (auth/RBAC, payment verification, fee
+  rounding, audit redaction, CSV safety, finance accounting) is covered by a
+  unit test suite: `cd apps/api && npm test`.
 
 ## Data model
 
 `User` (staff) · `Guardian` (parent) → `Child` → `EmergencyContact` ·
 `Attendance` (booking / drop-in with check-in/out, fee, payment) ·
 `Incident` (staff- or parent-reported, tick-box categories, encrypted details) ·
+`AuditLog` (append-only trail of every state-changing request) ·
 `FacilitySettings` (the single service's settings).

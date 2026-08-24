@@ -33,6 +33,16 @@ session online** (`/book`) with card prepayment, which staff confirm.
 - Single facility: no org scoping / RLS. Auth is JWT + roles (RolesGuard).
   Every route needs a token unless `@Public()` (setup-status, first-admin,
   login). `@Roles("admin")` gates settings-write and all of `/staff`.
+- **JWT re-checks the account on every request** (`jwt.strategy.ts`): `validate`
+  loads the user and rejects a suspended/deleted account and returns the
+  *current* DB role — so suspending or demoting a staff member takes effect
+  immediately, not after the 12h token expiry. Don't revert this to a
+  payload-only check.
+- **Rate limiting is global** (`ThrottlerGuard` as the first `APP_GUARD`,
+  300/min/IP) so unauthenticated request floods on any route are capped before
+  the JWT guard would 401-and-audit them. Sensitive public write routes tighten
+  it via `@Throttle`: login 10/min, first-admin 5/min, intake + all public
+  booking writes 30/min. Add `@Throttle` to any new public write route.
 - Staff log in with a **username** (3–40 chars, `a-z0-9._-`), stored/compared
   lower-case. Email is optional and never used for login. The first admin is
   created through the app's one-time setup screen
@@ -65,9 +75,22 @@ session online** (`/book`) with card prepayment, which staff confirm.
   `CORS_ORIGINS`).
 - Children's medical notes are encrypted at the app layer
   (`common/encryption.util.ts`, `CHILD_DATA_ENCRYPTION_KEY`, AES-256-GCM).
-  Never store them plaintext.
+  Never store them plaintext. `decryptField` returns `""` on an undecryptable
+  value, so a wrong/rotated key fails silently — `EncryptionHealthService`
+  guards this by verifying a stored canary (`FacilitySettings.encryptionCanary`)
+  on boot and logging loudly on mismatch. `GET /families` (list) returns only a
+  `hasMedicalNotes` boolean; the decrypted note is on the audited detail route
+  (`GET /families/:id`) only, so a facility-wide list never bulk-decrypts.
+  Deleting a child record is admin-only (like incidents).
 - Age is always computed on read (`common/age.util.ts`) from birthMonth/
   birthYear — never stored, never stale.
+- **PaymentIntents are bound to what they pay for** (replay guard): `createIntent`
+  takes a `reference` (`booking:<id>` / `attendance:<id>`) stamped into Stripe
+  metadata (and the test-stub id); `assertSucceeded` re-checks status, amount,
+  currency **and** that reference, so a real succeeded intent can't be replayed
+  against another same-priced record. `stripePaymentIntentId` is also `@unique`
+  on both `Attendance` and `BookingRequest` as a DB-level backstop. Always pass
+  the correct reference when adding a new payment path.
 - Payments use the real Stripe SDK. An admin links a Stripe account in-app
   under **Settings → Payments** (`POST /settings/stripe`); the secret key is
   validated against Stripe then stored **encrypted** (same AES-256-GCM app key
@@ -121,10 +144,36 @@ New Prisma models: add a migration; the API container runs
   details — **required when "other" is ticked**, encrypted at rest like medical
   notes since they may describe injuries. Deleting an entry is admin-only;
   entries are otherwise immutable records.
+- **Audit log** (`audit` module; web `(app)/audit`, admin nav): append-only
+  trail of every **mutation** (POST/PATCH/PUT/DELETE — including denied 401/403
+  and failed 4xx/5xx attempts, and public kiosk/booking requests) plus
+  sensitive reads (`GET /families/:id`, which exposes decrypted medical notes).
+  Captured by **middleware on response-finish** (`audit.middleware.ts`) — NOT
+  an interceptor, because guards run before interceptors and denied requests
+  would be invisible. Each row: actor (id/username/role from the JWT; null =
+  public), ip (real client via trust proxy), user agent, method/path, `action`
+  (path with uuids stripped, filterable), first uuid as `targetId`, status,
+  duration, and the **redacted** request body — passwords, Stripe keys, medical
+  notes, signatures and incident descriptions are replaced with `[redacted]`
+  (`REDACT_KEYS`/`REDACT_BY_PATH` in `audit.service.ts`; long strings clipped
+  to 300 chars). Reading the log is `GET /audit` (admin-only, filters + paging);
+  there is deliberately **no write/delete API** — never add one. Recording is
+  fire-and-forget and must never throw into the request pipeline. When adding
+  routes with new sensitive body fields, add them to the redact lists.
+  **Request detail (body/query) is stored only for authenticated, non-denied
+  requests** — unauthenticated or 401/403 requests leave the accountability row
+  but no attacker-controlled payload — and each row's detail is capped at ~8 KB.
+  Entries are pruned on boot and daily to `AUDIT_RETENTION_DAYS` (default 730).
 - **Finance** (`finance` module, **admin-only**; web `(app)/finance` in the
   admin nav): accounting exports on a **cash basis** — transactions belong to a
   window by the day money moved (`paidAt` / refund `decidedAt`, facility-local),
-  unlike Reports which slices by service date. Three exports over a date range:
+  unlike Reports which slices by service date. Money-in = attendance fees
+  (`paidAt`) **plus** online prepayment cash-ins for requests not yet an
+  attendance (status pending/declined — confirmed ones are counted as their
+  attendance, so no double count); confirmed bookings are dated by the actual
+  charge time (`createConfirmedBooking` carries the request's `paidAt`).
+  Money-out = refunds of declined prepayments (`decidedAt`). The Xero CSV total
+  equals the on-screen net for the same range. Three exports over a date range:
   **Xero sales CSV** (Xero's official sales-invoice import template; import via
   Business → Invoices → Import choosing *Tax Inclusive*), **transactions CSV**
   (client-side via `lib/csv.ts`), and a **PDF report** (`finance.pdf.ts`,

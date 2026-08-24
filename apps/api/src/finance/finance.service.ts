@@ -1,7 +1,8 @@
-import { Injectable } from "@nestjs/common";
+import { BadRequestException, Injectable } from "@nestjs/common";
 import { DateTime } from "luxon";
 import { PrismaService } from "../prisma/prisma.service";
 import { SettingsService } from "../settings/settings.service";
+import { escapeCsvCell } from "../common/csv.util";
 
 // Finance works on a cash basis: a transaction belongs to the export window by
 // the day the money actually moved (paidAt / refund decidedAt, facility-local),
@@ -10,8 +11,9 @@ import { SettingsService } from "../settings/settings.service";
 
 export interface FinanceTxn {
   id: string;
+  kind: "fee" | "prepayment"; // an attendance fee, or an online prepayment cash-in
   invoiceNumber: string;
-  paidDate: string; // facility-local ISO date
+  paidDate: string; // facility-local ISO date the money moved
   serviceDate: string;
   child: string;
   guardian: string;
@@ -58,8 +60,13 @@ export class FinanceService {
   /** Resolve a [from,to] pair of local dates into UTC bounds (mirrors reports). */
   private range(tz: string, from?: string, to?: string) {
     const today = DateTime.now().setZone(tz);
-    const startD = (from ? DateTime.fromISO(from, { zone: tz }) : today.minus({ days: 29 })).startOf("day");
-    const endExclusive = (to ? DateTime.fromISO(to, { zone: tz }) : today).startOf("day").plus({ days: 1 });
+    const parse = (v: string, label: string) => {
+      const d = DateTime.fromISO(v, { zone: tz });
+      if (!d.isValid) throw new BadRequestException(`Invalid ${label} date`);
+      return d;
+    };
+    const startD = (from ? parse(from, "from") : today.minus({ days: 29 })).startOf("day");
+    const endExclusive = (to ? parse(to, "to") : today).startOf("day").plus({ days: 1 });
     return {
       start: startD.toJSDate(),
       end: endExclusive.toJSDate(),
@@ -83,14 +90,28 @@ export class FinanceService {
     const tz = f.timezone;
     const r = this.range(tz, from, to);
 
-    const [payments, refundedRequests, serviceWindow] = await Promise.all([
-      // Money in: fees paid inside the window (any payment method).
+    const [payments, prepayments, refundedRequests, serviceWindow] = await Promise.all([
+      // Money in (attendance fees): paid inside the window (any payment method).
+      // Confirmed online bookings are attendances too, so they're counted here,
+      // dated by their actual charge time (createConfirmedBooking carries paidAt).
       this.prisma.attendance.findMany({
         where: { paymentStatus: "paid", feeCents: { gt: 0 }, paidAt: { gte: r.start, lt: r.end } },
         include: { child: { include: { guardian: true } } },
         orderBy: { paidAt: "asc" },
       }),
-      // Money back out: online prepayments refunded when a request was declined.
+      // Money in (online prepayments) that are NOT yet an attendance — i.e. still
+      // pending, or declined. Confirmed ones are excluded (counted above as the
+      // attendance), so nothing is double-counted. Keyed by the charge date.
+      this.prisma.bookingRequest.findMany({
+        where: {
+          paymentStatus: "paid",
+          status: { in: ["pending", "declined"] },
+          paidAt: { gte: r.start, lt: r.end },
+        },
+        orderBy: { paidAt: "asc" },
+      }),
+      // Money back out: online prepayments refunded when a request was declined,
+      // keyed by the refund (decision) date.
       this.prisma.bookingRequest.findMany({
         where: { status: "declined", paymentStatus: "paid", decidedAt: { gte: r.start, lt: r.end } },
         orderBy: { decidedAt: "asc" },
@@ -110,6 +131,7 @@ export class FinanceService {
       const g = a.child?.guardian ?? null;
       return {
         id: a.id,
+        kind: "fee" as const,
         invoiceNumber: this.invoiceNo(f.xeroInvoicePrefix, a.id),
         paidDate: this.localDate(a.paidAt, tz) || this.localDate(a.serviceDate, tz),
         serviceDate: this.localDate(a.serviceDate, tz),
@@ -120,6 +142,25 @@ export class FinanceService {
         amountCents: a.feeCents,
       };
     });
+
+    // Prepayment cash-ins become money-in rows too (method: online), so the
+    // transactions total and the CSV match `collected`.
+    for (const q of prepayments) {
+      collected += q.feeCents;
+      method.online += q.feeCents;
+      rows.push({
+        id: q.id,
+        kind: "prepayment" as const,
+        invoiceNumber: this.invoiceNo(f.xeroInvoicePrefix, q.id, "B"),
+        paidDate: this.localDate(q.paidAt, tz) || this.localDate(q.requestedStart, tz),
+        serviceDate: this.localDate(q.requestedStart, tz),
+        child: `${q.childFirstName} ${q.childLastName}`,
+        guardian: `${q.parentFirstName} ${q.parentLastName}`,
+        guardianEmail: q.parentEmail ?? null,
+        method: "online",
+        amountCents: q.feeCents,
+      });
+    }
 
     let refunded = 0;
     const refunds: FinanceRefund[] = refundedRequests.map((q) => {
@@ -167,9 +208,12 @@ export class FinanceService {
 
   /**
    * Xero's sales-invoice import template (Business → Invoices → Import). One
-   * invoice line per fee collected; declined-and-refunded online prepayments
-   * export as an invoice + credit-note pair (negative UnitAmount) so both bank
-   * transactions reconcile and the pair nets to zero.
+   * invoice line per money-in row (attendance fees AND online prepayment
+   * cash-ins), plus a negative credit-note line for each refunded prepayment.
+   * A declined-and-refunded prepayment therefore appears as its cash-in invoice
+   * (dated when charged) and a credit note (dated when refunded), so both bank
+   * transactions reconcile and the pair nets to zero. The file total equals the
+   * summary's net for the same range.
    */
   async xeroSalesCsv(from?: string, to?: string): Promise<{ filename: string; csv: string }> {
     const d = await this.summary(from, to);
@@ -183,23 +227,23 @@ export class FinanceService {
       "TrackingName1", "TrackingOption1", "TrackingName2", "TrackingOption2",
       "Currency", "BrandingTheme",
     ];
-    const esc = (v: string | number) => {
-      const s = v === null || v === undefined ? "" : String(v);
-      return /[",\n\r]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s;
-    };
-    const line = (cols: Record<string, string | number>) => HEADERS.map((h) => esc(cols[h] ?? "")).join(",");
+    const line = (cols: Record<string, string | number>) => HEADERS.map((h) => escapeCsvCell(cols[h] ?? "")).join(",");
     const dollars = (cents: number) => (cents / 100).toFixed(2);
 
     const out = [HEADERS.join(",")];
     for (const t of d.rows) {
+      const description =
+        t.kind === "prepayment"
+          ? `Creche online booking prepayment - ${t.child}`
+          : `Creche care - ${t.child} - ${t.serviceDate}${t.method ? ` (paid by ${t.method})` : ""}`;
       out.push(line({
         "*ContactName": t.guardian,
         "EmailAddress": t.guardianEmail ?? "",
         "*InvoiceNumber": t.invoiceNumber,
-        "Reference": `Creche ${t.serviceDate}`,
+        "Reference": t.kind === "prepayment" ? "Online booking prepayment" : `Creche ${t.serviceDate}`,
         "*InvoiceDate": t.paidDate,
         "*DueDate": t.paidDate,
-        "*Description": `Creche care - ${t.child} - ${t.serviceDate}${t.method ? ` (paid by ${t.method})` : ""}`,
+        "*Description": description,
         "*Quantity": 1,
         "*UnitAmount": dollars(t.amountCents),
         "*AccountCode": d.xero.accountCode,
@@ -207,32 +251,22 @@ export class FinanceService {
         "Currency": "AUD",
       }));
     }
+    // Credit notes for refunded prepayments (the matching cash-in invoice is in
+    // d.rows above). Negative UnitAmount, dated the refund day.
     for (const q of d.refunds) {
-      const common = {
+      out.push(line({
         "*ContactName": q.parent,
         "EmailAddress": q.parentEmail ?? "",
-        "*Quantity": 1,
-        "*AccountCode": d.xero.accountCode,
-        "*TaxType": d.xero.taxType,
-        "Currency": "AUD",
-      };
-      out.push(line({
-        ...common,
-        "*InvoiceNumber": q.invoiceNumber,
-        "Reference": "Online booking prepayment (later declined)",
-        "*InvoiceDate": q.paidDate,
-        "*DueDate": q.paidDate,
-        "*Description": `Creche online booking prepayment - ${q.child}`,
-        "*UnitAmount": dollars(q.amountCents),
-      }));
-      out.push(line({
-        ...common,
         "*InvoiceNumber": q.creditNumber,
         "Reference": `Refund of ${q.invoiceNumber}`,
         "*InvoiceDate": q.refundDate,
         "*DueDate": q.refundDate,
         "*Description": `Refund - declined online booking - ${q.child}`,
+        "*Quantity": 1,
         "*UnitAmount": `-${dollars(q.amountCents)}`,
+        "*AccountCode": d.xero.accountCode,
+        "*TaxType": d.xero.taxType,
+        "Currency": "AUD",
       }));
     }
     return {

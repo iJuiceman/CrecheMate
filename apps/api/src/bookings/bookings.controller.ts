@@ -1,5 +1,5 @@
-import { Body, Controller, Get, Param, Post, Req, UseGuards } from "@nestjs/common";
-import { ThrottlerGuard } from "@nestjs/throttler";
+import { Body, Controller, Get, Param, Post, Req } from "@nestjs/common";
+import { Throttle } from "@nestjs/throttler";
 import type { Request } from "express";
 import { BookingsService } from "./bookings.service";
 import {
@@ -16,9 +16,9 @@ function actor(req: Request): JwtPayload {
   return (req as Request & { user: JwtPayload }).user;
 }
 
-// The public routes here are internet-facing, so they're rate-limited.
+// The public routes here are internet-facing. The global ThrottlerGuard applies;
+// the public write routes add a tighter 30/min/IP cap against abuse.
 @Controller("bookings")
-@UseGuards(ThrottlerGuard)
 export class BookingsController {
   constructor(private bookings: BookingsService) {}
 
@@ -30,18 +30,21 @@ export class BookingsController {
   }
 
   @Public()
+  @Throttle({ default: { limit: 30, ttl: 60_000 } })
   @Post("quote")
   quote(@Body() dto: BookingQuoteDto) {
     return this.bookings.quote(dto.startAt, dto.endAt);
   }
 
   @Public()
+  @Throttle({ default: { limit: 30, ttl: 60_000 } })
   @Post()
   createRequest(@Body() dto: CreateBookingRequestDto) {
     return this.bookings.createRequest(dto);
   }
 
   @Public()
+  @Throttle({ default: { limit: 30, ttl: 60_000 } })
   @Post(":id/pay")
   payRequest(@Param("id") id: string, @Body() dto: PayBookingRequestDto) {
     return this.bookings.payRequest(id, dto.stripePaymentIntentId);

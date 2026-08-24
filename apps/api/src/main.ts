@@ -5,9 +5,13 @@ import { AppModule } from "./app.module";
 
 async function bootstrap() {
   const app = await NestFactory.create(AppModule);
-  // Behind nginx (TLS termination + reverse proxy): trust the first proxy hop
-  // so req.ip / rate limiting see the real client address via X-Forwarded-For.
-  app.getHttpAdapter().getInstance().set("trust proxy", 1);
+  // Behind nginx (TLS termination + reverse proxy) we trust the first proxy hop
+  // so req.ip / rate limiting see the real client via X-Forwarded-For. But when
+  // the API is exposed directly (e.g. the LAN dev compose on 0.0.0.0), trusting
+  // XFF lets any client spoof its IP — forging the audit trail and rotating the
+  // rate-limit key. So it's opt-out via TRUST_PROXY=false for direct exposure.
+  const trustProxy = process.env.TRUST_PROXY === "false" ? false : 1;
+  app.getHttpAdapter().getInstance().set("trust proxy", trustProxy);
   app.use(helmet());
   app.enableCors({
     origin: (process.env.CORS_ORIGINS ?? "http://localhost:5001").split(",").filter(Boolean),

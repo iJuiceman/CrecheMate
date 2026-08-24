@@ -16,23 +16,36 @@ export class AuthService {
     private jwt: JwtService,
   ) {}
 
-  /** One-time bootstrap: create the first admin, only when no users exist yet. */
+  /** One-time bootstrap: create the first admin, only when no users exist yet.
+   * The count-check and the create run in one Serializable transaction so two
+   * concurrent setup requests can't both observe zero users and each plant an
+   * admin — the second transaction conflicts and aborts. */
   async registerFirstAdmin(dto: RegisterFirstAdminDto) {
-    const count = await this.prisma.user.count();
-    if (count > 0) {
-      throw new ConflictException("Setup already complete — ask an admin to add your account");
-    }
     const passwordHash = await bcrypt.hash(dto.password, 10);
-    const user = await this.prisma.user.create({
-      data: {
-        username: dto.username.toLowerCase(),
-        email: dto.email?.toLowerCase() || null,
-        passwordHash,
-        firstName: dto.firstName,
-        lastName: dto.lastName,
-        role: "admin",
-      },
-    });
+    const user = await this.prisma
+      .$transaction(
+        async (tx) => {
+          if ((await tx.user.count()) > 0) {
+            throw new ConflictException("Setup already complete — ask an admin to add your account");
+          }
+          return tx.user.create({
+            data: {
+              username: dto.username.toLowerCase(),
+              email: dto.email?.toLowerCase() || null,
+              passwordHash,
+              firstName: dto.firstName,
+              lastName: dto.lastName,
+              role: "admin",
+            },
+          });
+        },
+        { isolationLevel: "Serializable" },
+      )
+      .catch((e) => {
+        if (e instanceof ConflictException) throw e;
+        // A serialization failure means another setup request won the race.
+        throw new ConflictException("Setup already complete — ask an admin to add your account");
+      });
     return this.issue(user);
   }
 

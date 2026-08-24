@@ -16,6 +16,7 @@ const ADMIN_NAV = [
   { href: "/reports", label: "Reports", icon: "📊" },
   { href: "/finance", label: "Finance", icon: "💰" },
   { href: "/staff", label: "Staff", icon: "🧑‍🏫" },
+  { href: "/audit", label: "Audit log", icon: "🛡️" },
   { href: "/settings", label: "Settings", icon: "⚙️" },
 ];
 

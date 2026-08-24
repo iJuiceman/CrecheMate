@@ -131,7 +131,7 @@ export class BookingsService {
       },
     });
 
-    const intent = await this.payments.createIntent(feeCents);
+    const intent = await this.payments.createIntent(feeCents, `booking:${request.id}`);
     return {
       requestId: request.id,
       feeCents,
@@ -148,7 +148,7 @@ export class BookingsService {
     if (!request) throw new NotFoundException("Booking request not found");
     if (request.status !== "pending") throw new BadRequestException("This request has already been processed");
     if (request.paymentStatus === "paid") return { ok: true };
-    await this.payments.assertSucceeded(stripePaymentIntentId, request.feeCents);
+    await this.payments.assertSucceeded(stripePaymentIntentId, request.feeCents, `booking:${id}`);
     await this.prisma.bookingRequest.update({
       where: { id },
       data: { paymentStatus: "paid", stripePaymentIntentId, paidAt: new Date() },
@@ -229,6 +229,35 @@ export class BookingsService {
     if (request.status !== "pending") throw new BadRequestException("This request has already been processed");
     if (request.paymentStatus !== "paid") throw new BadRequestException("This request hasn't been paid");
 
+    // Atomically claim the request so two staff confirming at once can't both
+    // create a booking (which would oversell capacity and orphan one booking).
+    // Only the caller whose update actually flips pending→confirmed proceeds.
+    const claim = await this.prisma.bookingRequest.updateMany({
+      where: { id, status: "pending" },
+      data: { status: "confirmed", decidedAt: new Date(), decidedById: actor.sub },
+    });
+    if (claim.count === 0) throw new BadRequestException("This request has already been processed");
+
+    try {
+      return await this.finishConfirm(request, opts);
+    } catch (e) {
+      // The work failed (e.g. capacity full, invalid child) — release the claim
+      // so staff can retry. Guarded so we never revert a successfully-linked one.
+      await this.prisma.bookingRequest
+        .updateMany({
+          where: { id, status: "confirmed", attendanceId: null },
+          data: { status: "pending", decidedAt: null, decidedById: null },
+        })
+        .catch(() => {});
+      throw e;
+    }
+  }
+
+  private async finishConfirm(
+    request: { id: string; parentFirstName: string; parentLastName: string; parentPhone: string; parentEmail: string | null; childFirstName: string; childLastName: string; childBirthMonth: number | null; childBirthYear: number | null; requestedStart: Date; requestedEnd: Date; court: string | null; courtBookingName: string | null; feeCents: number; stripePaymentIntentId: string | null; paidAt: Date | null; notes: string | null },
+    opts: { childId?: string; createNewFamily?: boolean },
+  ) {
+    const id = request.id;
     let childId = opts.childId;
     if (opts.createNewFamily) {
       // Minimal family from the parent-typed details — no emergency contacts or
@@ -264,18 +293,15 @@ export class BookingsService {
       court: request.court,
       courtBookingName: request.courtBookingName,
       stripePaymentIntentId: request.stripePaymentIntentId,
+      paidAt: request.paidAt,
       notes: request.notes,
     });
 
+    // Status/decidedAt/decidedById were set by the atomic claim; just link the
+    // created booking and matched child.
     await this.prisma.bookingRequest.update({
       where: { id },
-      data: {
-        status: "confirmed",
-        attendanceId: booking.id,
-        childId,
-        decidedAt: new Date(),
-        decidedById: actor.sub,
-      },
+      data: { attendanceId: booking.id, childId },
     });
     return { ok: true, attendanceId: booking.id };
   }
@@ -285,11 +311,11 @@ export class BookingsService {
     const request = await this.prisma.bookingRequest.findUnique({ where: { id } });
     if (!request) throw new NotFoundException("Booking request not found");
     if (request.status !== "pending") throw new BadRequestException("This request has already been processed");
-    if (request.paymentStatus === "paid") {
-      await this.payments.refund(request.stripePaymentIntentId);
-    }
-    await this.prisma.bookingRequest.update({
-      where: { id },
+
+    // Atomically claim so concurrent declines can't both fire a refund. Only the
+    // caller who actually flips pending→declined proceeds to refund.
+    const claim = await this.prisma.bookingRequest.updateMany({
+      where: { id, status: "pending" },
       data: {
         status: "declined",
         decidedAt: new Date(),
@@ -297,6 +323,11 @@ export class BookingsService {
         notes: reason ? `${request.notes ? request.notes + " · " : ""}Declined: ${reason}` : request.notes,
       },
     });
+    if (claim.count === 0) throw new BadRequestException("This request has already been processed");
+
+    if (request.paymentStatus === "paid") {
+      await this.payments.refund(request.stripePaymentIntentId);
+    }
     return { ok: true, refunded: request.paymentStatus === "paid" };
   }
 }

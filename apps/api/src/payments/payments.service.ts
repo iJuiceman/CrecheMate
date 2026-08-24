@@ -60,14 +60,26 @@ export class PaymentsService {
     return s?.stripePublishableKey ?? null;
   }
 
-  /** Create a payment intent for `amountCents`. In test mode returns a stub. */
+  /**
+   * Create a payment intent for `amountCents`, bound to `reference` — a stable
+   * token identifying exactly what is being paid for (e.g. `booking:<id>` or
+   * `attendance:<id>`). The reference is stamped into the intent's Stripe
+   * metadata (server-authoritative, the client can't forge it) and re-checked
+   * at `assertSucceeded`, so an intent created for one record can never be
+   * replayed to mark a different record paid. In test mode the reference is
+   * embedded in the stub id for the same check. In both modes the DB also
+   * carries a unique constraint on the stored intent id as a second line of
+   * defence against reuse.
+   */
   async createIntent(
     amountCents: number,
+    reference: string,
   ): Promise<{ id: string; clientSecret: string; testMode: boolean; publishableKey: string | null }> {
     if (amountCents <= 0) throw new BadRequestException("Amount must be positive");
     const key = await this.secretKey();
     if (!key) {
-      const id = `pi_test_${amountCents}_${randomBytes(8).toString("hex")}`;
+      const refHex = Buffer.from(reference, "utf8").toString("hex");
+      const id = `pi_test_${amountCents}_${refHex}_${randomBytes(8).toString("hex")}`;
       return { id, clientSecret: `test_${id}`, testMode: true, publishableKey: null };
     }
     const intent = await this.client(key).paymentIntents.create({
@@ -75,6 +87,7 @@ export class PaymentsService {
       currency: "aud",
       automatic_payment_methods: { enabled: true },
       description: "CrecheMate childcare fee",
+      metadata: { crechemate_ref: reference },
     });
     return {
       id: intent.id,
@@ -84,13 +97,20 @@ export class PaymentsService {
     };
   }
 
-  /** Verify a payment succeeded for `amountCents` before marking a fee paid. */
-  async assertSucceeded(paymentIntentId: string, amountCents: number): Promise<void> {
+  /**
+   * Verify a payment succeeded for `amountCents` AND was created for
+   * `reference`, before marking a fee paid. The reference check is what stops
+   * a real, succeeded intent from being replayed against a different booking
+   * or attendance of the same price.
+   */
+  async assertSucceeded(paymentIntentId: string, amountCents: number, reference: string): Promise<void> {
     if (paymentIntentId.startsWith("pi_test_")) {
       // A stub intent is only acceptable while genuinely in test mode.
       if (!(await this.isTestMode())) throw new BadRequestException("Invalid payment reference");
-      const expected = Number(paymentIntentId.split("_")[2]);
-      if (expected !== amountCents) throw new BadRequestException("Payment amount mismatch");
+      const parts = paymentIntentId.split("_"); // pi_test_<amount>_<refHex>_<rand>
+      if (Number(parts[2]) !== amountCents) throw new BadRequestException("Payment amount mismatch");
+      const embeddedRef = Buffer.from(parts[3] ?? "", "hex").toString("utf8");
+      if (embeddedRef !== reference) throw new BadRequestException("Payment reference mismatch");
       return;
     }
     const key = await this.secretKey();
@@ -99,6 +119,7 @@ export class PaymentsService {
     if (intent.status !== "succeeded") throw new BadRequestException("Card payment hasn't completed");
     if (intent.amount_received !== amountCents) throw new BadRequestException("Payment amount mismatch");
     if (intent.currency !== "aud") throw new BadRequestException("Payment currency mismatch");
+    if (intent.metadata?.crechemate_ref !== reference) throw new BadRequestException("Payment reference mismatch");
   }
 
   /**

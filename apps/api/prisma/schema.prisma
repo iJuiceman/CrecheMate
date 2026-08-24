@@ -147,7 +147,9 @@ model Attendance {
   feeCents              Int            @default(0) @map("fee_cents")
   paymentStatus         PaymentStatus  @default(unpaid) @map("payment_status")
   paymentMethod         PaymentMethod? @map("payment_method")
-  stripePaymentIntentId String?        @map("stripe_payment_intent_id")
+  // Unique: a Stripe intent can settle exactly one attendance (replay guard).
+  // Multiple NULLs are allowed, so unpaid/cash rows are unaffected.
+  stripePaymentIntentId String?        @unique @map("stripe_payment_intent_id")
   paidAt                DateTime?      @map("paid_at")
   notes          String?
   createdAt      DateTime         @default(now()) @map("created_at")
@@ -195,7 +197,8 @@ model BookingRequest {
 
   // Prepayment (mirrors the attendance payment fields).
   paymentStatus         PaymentStatus @default(unpaid) @map("payment_status")
-  stripePaymentIntentId String?       @map("stripe_payment_intent_id")
+  // Unique: one Stripe intent settles one request (replay guard). See Attendance.
+  stripePaymentIntentId String?       @unique @map("stripe_payment_intent_id")
   paidAt                DateTime?     @map("paid_at")
 
   // Set when a staff member decides: the booking it produced + the matched or
@@ -244,6 +247,37 @@ model Incident {
   @@map("incidents")
 }
 
+// ── Audit log ───────────────────────────────────────────────────────────
+// One row per API request worth auditing: every mutation (including denied
+// and failed ones) plus reads of sensitive detail (family records). Written
+// by middleware on response-finish; append-only — no API can update or
+// delete rows. Request bodies are stored redacted (never passwords, Stripe
+// secrets, medical notes, signatures, or incident details).
+model AuditLog {
+  id            String   @id @default(uuid())
+  at            DateTime @default(now())
+  // Null actor = unauthenticated (public kiosk/booking pages, failed logins).
+  actorId       String?  @map("actor_id")
+  actorUsername String?  @map("actor_username")
+  actorRole     String?  @map("actor_role")
+  ip            String?
+  userAgent     String?  @map("user_agent")
+  method        String
+  path          String
+  // Path with ids stripped, e.g. "POST /attendance/checkout" — filterable.
+  action        String
+  // First uuid in the path — the record the request acted on.
+  targetId      String?  @map("target_id")
+  status        Int
+  durationMs    Int      @map("duration_ms")
+  detail        Json?
+
+  @@index([at])
+  @@index([actorId])
+  @@index([action])
+  @@map("audit_logs")
+}
+
 // ── Facility (single onsite service) ────────────────────────────────────
 model FacilitySettings {
   id              String   @id @default(uuid())
@@ -272,6 +306,10 @@ model FacilitySettings {
   // mode.
   stripeSecretKeyEncrypted String? @map("stripe_secret_key_encrypted")
   stripePublishableKey     String? @map("stripe_publishable_key")
+  // A known sentinel encrypted with CHILD_DATA_ENCRYPTION_KEY. On boot we verify
+  // it still decrypts — detecting a wrong/rotated key BEFORE it silently serves
+  // empty medical notes. Set once, never read by the app otherwise.
+  encryptionCanary         String? @map("encryption_canary")
   // Xero export config — the revenue account code and AU tax type stamped on
   // every exported sales line, and the invoice-number prefix. Tax treatment is
   // configurable because childcare GST status varies (approved child care is

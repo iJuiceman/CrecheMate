@@ -1,4 +1,4 @@
-import { Injectable } from "@nestjs/common";
+import { BadRequestException, Injectable } from "@nestjs/common";
 import { DateTime } from "luxon";
 import { PrismaService } from "../prisma/prisma.service";
 import { SettingsService } from "../settings/settings.service";
@@ -20,8 +20,13 @@ export class ReportsService {
   /** Resolve a [from,to] pair of local dates into UTC bounds + the day list. */
   private range(tz: string, from?: string, to?: string) {
     const today = DateTime.now().setZone(tz);
-    const startD = (from ? DateTime.fromISO(from, { zone: tz }) : today.minus({ days: 29 })).startOf("day");
-    const endExclusive = (to ? DateTime.fromISO(to, { zone: tz }) : today).startOf("day").plus({ days: 1 });
+    const parse = (v: string, label: string) => {
+      const d = DateTime.fromISO(v, { zone: tz });
+      if (!d.isValid) throw new BadRequestException(`Invalid ${label} date`);
+      return d;
+    };
+    const startD = (from ? parse(from, "from") : today.minus({ days: 29 })).startOf("day");
+    const endExclusive = (to ? parse(to, "to") : today).startOf("day").plus({ days: 1 });
     const days: string[] = [];
     for (let d = startD; d < endExclusive && days.length < 400; d = d.plus({ days: 1 })) {
       days.push(d.toISODate()!);

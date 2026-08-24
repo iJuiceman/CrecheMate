@@ -41,7 +41,7 @@ export default function FamiliesPage() {
                     : "No children yet"}
                 </p>
               </div>
-              {g.children.some((c) => c.medicalNotes) && <span className="rounded-full bg-coral/10 px-2 py-0.5 text-xs font-semibold text-coral">⚕ medical</span>}
+              {g.children.some((c) => c.hasMedicalNotes) && <span className="rounded-full bg-coral/10 px-2 py-0.5 text-xs font-semibold text-coral">⚕ medical</span>}
             </div>
           </Link>
         ))}

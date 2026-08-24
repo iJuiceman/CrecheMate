@@ -186,6 +186,9 @@ export class AttendanceService {
     court?: string | null;
     courtBookingName?: string | null;
     stripePaymentIntentId?: string | null;
+    // When the prepayment was actually charged (the online booking's paidAt) —
+    // so cash-basis finance dates the revenue to the charge, not the confirm.
+    paidAt?: Date | null;
     notes?: string | null;
   }) {
     const f = await this.facility();
@@ -218,7 +221,7 @@ export class AttendanceService {
         paymentStatus: paid ? "paid" : "unpaid",
         paymentMethod: paid ? "online" : null,
         stripePaymentIntentId: p.stripePaymentIntentId ?? null,
-        paidAt: paid ? new Date() : null,
+        paidAt: paid ? (p.paidAt ?? new Date()) : null,
         notes: p.notes ?? null,
       },
       include: this.childInclude,
@@ -296,7 +299,7 @@ export class AttendanceService {
     if (dto.method && feeCents > 0) {
       if (dto.method === "online") {
         if (!dto.stripePaymentIntentId) throw new BadRequestException("A card payment reference is required for online payment");
-        await this.payments.assertSucceeded(dto.stripePaymentIntentId, feeCents);
+        await this.payments.assertSucceeded(dto.stripePaymentIntentId, feeCents, `attendance:${id}`);
         stripePaymentIntentId = dto.stripePaymentIntentId;
       }
       paymentStatus = "paid";
@@ -327,7 +330,7 @@ export class AttendanceService {
     if (!a) throw new NotFoundException("Attendance not found");
     if (a.feeCents <= 0) throw new BadRequestException("Nothing to pay");
     if (a.paymentStatus === "paid") throw new BadRequestException("Already paid");
-    return this.payments.createIntent(a.feeCents);
+    return this.payments.createIntent(a.feeCents, `attendance:${id}`);
   }
 
   /** Record a payment against an attendance (at checkout or afterwards). */
@@ -338,7 +341,7 @@ export class AttendanceService {
     if (a.feeCents <= 0) throw new BadRequestException("Nothing to pay");
     if (dto.method === "online") {
       if (!dto.stripePaymentIntentId) throw new BadRequestException("A card payment reference is required");
-      await this.payments.assertSucceeded(dto.stripePaymentIntentId, a.feeCents);
+      await this.payments.assertSucceeded(dto.stripePaymentIntentId, a.feeCents, `attendance:${id}`);
     }
     const updated = await this.prisma.attendance.update({
       where: { id },

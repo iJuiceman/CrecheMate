@@ -13,6 +13,7 @@ export interface ChildFull {
   birthMonth: number | null;
   birthYear: number | null;
   age: number | null;
+  hasMedicalNotes: boolean; // present in list responses; medicalNotes text only on detail
   medicalNotes: string | null;
   active: boolean;
   emergencyContacts: EmergencyContact[];
@@ -121,6 +122,7 @@ export interface FinanceSummary {
   byMethod: { method: string; cents: number }[];
   rows: {
     id: string;
+    kind: "fee" | "prepayment";
     invoiceNumber: string;
     paidDate: string;
     serviceDate: string;
@@ -208,6 +210,31 @@ export interface Incident {
   child: { id: string; name: string } | null;
   loggedBy: string | null;
   createdAt: string;
+}
+
+export interface AuditEntry {
+  id: string;
+  at: string;
+  actorId: string | null;
+  actor: string | null; // resolved staff name; null = unauthenticated/public
+  actorUsername: string | null;
+  actorRole: string | null;
+  ip: string | null;
+  userAgent: string | null;
+  method: string;
+  path: string;
+  action: string;
+  targetId: string | null;
+  status: number;
+  durationMs: number;
+  detail: { body?: unknown; query?: unknown } | null;
+}
+
+export interface AuditList {
+  total: number;
+  page: number;
+  pageSize: number;
+  rows: AuditEntry[];
 }
 
 export const money = (cents: number) => `$${(cents / 100).toFixed(2)}`;

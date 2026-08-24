@@ -8,7 +8,7 @@ import { AddChildDto, CreateFamilyDto, UpdateChildDto, UpdateGuardianDto } from 
 export class FamiliesService {
   constructor(private prisma: PrismaService) {}
 
-  private serializeChild(c: any) {
+  private serializeChild(c: any, includeDetail = false) {
     return {
       id: c.id,
       firstName: c.firstName,
@@ -16,7 +16,11 @@ export class FamiliesService {
       birthMonth: c.birthMonth,
       birthYear: c.birthYear,
       age: computeAge(c.birthMonth, c.birthYear),
-      medicalNotes: c.medicalNotesEncrypted ? decryptField(c.medicalNotesEncrypted) : null,
+      // The list only needs a flag; the decrypted note is returned on the
+      // (audited) detail view only, so a facility-wide list request never
+      // pulls every child's medical notes into one response.
+      hasMedicalNotes: !!c.medicalNotesEncrypted,
+      medicalNotes: includeDetail && c.medicalNotesEncrypted ? decryptField(c.medicalNotesEncrypted) : null,
       active: c.active,
       emergencyContacts: (c.emergencyContacts ?? []).map((e: any) => ({
         id: e.id,
@@ -28,7 +32,7 @@ export class FamiliesService {
     };
   }
 
-  private serializeGuardian(g: any, includeSignature = false) {
+  private serializeGuardian(g: any, includeDetail = false) {
     return {
       id: g.id,
       firstName: g.firstName,
@@ -45,8 +49,8 @@ export class FamiliesService {
       waiverSigned: !!g.waiverAcceptedAt,
       waiverAcceptedAt: g.waiverAcceptedAt ?? null,
       waiverVersion: g.waiverVersion ?? null,
-      waiverSignature: includeSignature && g.waiverSignatureEncrypted ? decryptField(g.waiverSignatureEncrypted) : null,
-      children: (g.children ?? []).map((c: any) => this.serializeChild(c)),
+      waiverSignature: includeDetail && g.waiverSignatureEncrypted ? decryptField(g.waiverSignatureEncrypted) : null,
+      children: (g.children ?? []).map((c: any) => this.serializeChild(c, includeDetail)),
     };
   }
 

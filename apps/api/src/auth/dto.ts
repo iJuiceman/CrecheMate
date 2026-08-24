@@ -36,6 +36,8 @@ export class LoginDto {
   @MaxLength(80)
   username: string;
 
+  // Bound the input so bcrypt never hashes an attacker-sized payload.
   @IsString()
+  @MaxLength(128)
   password: string;
 }
