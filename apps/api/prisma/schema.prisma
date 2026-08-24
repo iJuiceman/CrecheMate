@@ -76,6 +76,7 @@ model Child {
   guardian          Guardian           @relation(fields: [guardianId], references: [id])
   emergencyContacts EmergencyContact[]
   attendances       Attendance[]
+  incidents         Incident[]
 
   @@index([guardianId])
   @@map("children")
@@ -210,6 +211,39 @@ model BookingRequest {
   @@map("booking_requests")
 }
 
+// ── Incidents ───────────────────────────────────────────────────────────
+// Who told us about the incident — not an app role. Parents have no logins;
+// a staff member records what a parent reported at the desk.
+enum IncidentReporter {
+  staff
+  parent
+}
+
+model Incident {
+  id         String           @id @default(uuid())
+  // Usually the child involved; null for incidents with no specific child
+  // (e.g. a hazard a parent noticed).
+  childId    String?          @map("child_id")
+  occurredAt DateTime         @map("occurred_at")
+  reportedBy IncidentReporter @default(staff) @map("reported_by")
+  // The parent's name when reportedBy = parent.
+  reporterName String? @map("reporter_name")
+  // Tick-box categories from the fixed list in incidents.dto.ts ("other"
+  // requires a description).
+  types String[] @default([])
+  // Free-text details — may describe a child's injuries/health, so encrypted
+  // at the app layer like medical notes.
+  descriptionEncrypted String?  @map("description_encrypted")
+  loggedById           String   @map("logged_by_id")
+  createdAt            DateTime @default(now()) @map("created_at")
+
+  child Child? @relation(fields: [childId], references: [id])
+
+  @@index([occurredAt])
+  @@index([childId])
+  @@map("incidents")
+}
+
 // ── Facility (single onsite service) ────────────────────────────────────
 model FacilitySettings {
   id              String   @id @default(uuid())
@@ -238,6 +272,13 @@ model FacilitySettings {
   // mode.
   stripeSecretKeyEncrypted String? @map("stripe_secret_key_encrypted")
   stripePublishableKey     String? @map("stripe_publishable_key")
+  // Xero export config — the revenue account code and AU tax type stamped on
+  // every exported sales line, and the invoice-number prefix. Tax treatment is
+  // configurable because childcare GST status varies (approved child care is
+  // GST-free; a casual club creche may not qualify).
+  xeroAccountCode   String @default("200") @map("xero_account_code")
+  xeroTaxType       String @default("GST Free Income") @map("xero_tax_type")
+  xeroInvoicePrefix String @default("CM") @map("xero_invoice_prefix")
   updatedAt       DateTime @updatedAt @map("updated_at")
 
   @@map("facility_settings")

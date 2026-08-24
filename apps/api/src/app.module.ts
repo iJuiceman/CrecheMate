@@ -13,6 +13,8 @@ import { PaymentsModule } from "./payments/payments.module";
 import { IntakeModule } from "./intake/intake.module";
 import { BookingsModule } from "./bookings/bookings.module";
 import { ReportsModule } from "./reports/reports.module";
+import { IncidentsModule } from "./incidents/incidents.module";
+import { FinanceModule } from "./finance/finance.module";
 
 @Module({
   imports: [
@@ -29,6 +31,8 @@ import { ReportsModule } from "./reports/reports.module";
     IntakeModule,
     BookingsModule,
     ReportsModule,
+    IncidentsModule,
+    FinanceModule,
   ],
   providers: [
     // Every route requires a signed-in staff member unless marked @Public().

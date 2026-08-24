@@ -31,9 +31,32 @@ async function request<T>(path: string, options: { method?: string; body?: unkno
   return data as T;
 }
 
+/** Fetch an authenticated file (CSV/PDF) and trigger a browser download. */
+async function download(path: string, filename: string): Promise<void> {
+  const token = getToken();
+  const res = await fetch(`${API_URL}${path}`, {
+    headers: token ? { Authorization: `Bearer ${token}` } : {},
+  });
+  if (!res.ok) {
+    let msg: string | undefined;
+    try {
+      const data = await res.json();
+      msg = Array.isArray(data?.message) ? data.message.join(", ") : data?.message;
+    } catch { /* non-JSON error body */ }
+    throw new Error(msg || `Download failed (${res.status})`);
+  }
+  const url = URL.createObjectURL(await res.blob());
+  const a = document.createElement("a");
+  a.href = url;
+  a.download = filename;
+  a.click();
+  URL.revokeObjectURL(url);
+}
+
 export const api = {
   get: <T>(path: string) => request<T>(path),
   post: <T>(path: string, body?: unknown) => request<T>(path, { method: "POST", body }),
   patch: <T>(path: string, body?: unknown) => request<T>(path, { method: "PATCH", body }),
   del: <T>(path: string) => request<T>(path, { method: "DELETE" }),
+  download,
 };

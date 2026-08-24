@@ -1,4 +1,7 @@
-import { ArrayMaxSize, IsArray, IsInt, IsOptional, IsString, Matches, Max, MaxLength, Min } from "class-validator";
+import { ArrayMaxSize, IsArray, IsIn, IsInt, IsOptional, IsString, Matches, Max, MaxLength, Min } from "class-validator";
+
+// Xero's Australian tax rates for sales lines.
+export const XERO_TAX_TYPES = ["GST Free Income", "GST on Income", "BAS Excluded"] as const;
 
 const TIME = /^([01]\d|2[0-3]):[0-5]\d$/;
 
@@ -49,6 +52,20 @@ export class UpdateSettingsDto {
   @IsString({ each: true })
   @MaxLength(60, { each: true })
   courts?: string[];
+
+  @IsOptional()
+  @IsString()
+  @Matches(/^[A-Za-z0-9-]{1,10}$/, { message: "xeroAccountCode must be 1–10 letters/numbers" })
+  xeroAccountCode?: string;
+
+  @IsOptional()
+  @IsIn(XERO_TAX_TYPES)
+  xeroTaxType?: string;
+
+  @IsOptional()
+  @IsString()
+  @Matches(/^[A-Za-z0-9]{1,8}$/, { message: "xeroInvoicePrefix must be 1–8 letters/numbers" })
+  xeroInvoicePrefix?: string;
 }
 
 export class LinkStripeDto {

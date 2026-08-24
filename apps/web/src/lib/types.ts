@@ -99,6 +99,48 @@ export interface Settings {
   stripeConfigured: boolean;
   stripePublishableKey: string | null;
   paymentsTestMode: boolean;
+  // Xero export config (finance module).
+  xeroAccountCode: string;
+  xeroTaxType: string;
+  xeroInvoicePrefix: string;
+}
+
+export const XERO_TAX_TYPES = ["GST Free Income", "GST on Income", "BAS Excluded"];
+
+export interface FinanceSummary {
+  range: { from: string; to: string };
+  xero: { accountCode: string; taxType: string; invoicePrefix: string };
+  facility: { name: string; abn: string | null; timezone: string };
+  totals: {
+    collectedCents: number;
+    refundedCents: number;
+    netCents: number;
+    outstandingCents: number;
+    waivedCents: number;
+  };
+  byMethod: { method: string; cents: number }[];
+  rows: {
+    id: string;
+    invoiceNumber: string;
+    paidDate: string;
+    serviceDate: string;
+    child: string;
+    guardian: string;
+    guardianEmail: string | null;
+    method: string;
+    amountCents: number;
+  }[];
+  refunds: {
+    id: string;
+    invoiceNumber: string;
+    creditNumber: string;
+    paidDate: string;
+    refundDate: string;
+    child: string;
+    parent: string;
+    parentEmail: string | null;
+    amountCents: number;
+  }[];
 }
 
 export interface BookingConfig {
@@ -138,6 +180,34 @@ export interface BookingRequestRow {
     guardianName: string;
     phoneMatches: boolean;
   } | null;
+}
+
+// Incident tick-box categories — keys must match INCIDENT_TYPES in the API's
+// incidents.dto.ts.
+export const INCIDENT_TYPES = [
+  { key: "fall_or_trip", label: "Fall or trip" },
+  { key: "bump_or_bruise", label: "Bump or bruise" },
+  { key: "cut_or_graze", label: "Cut or graze" },
+  { key: "bite", label: "Bite" },
+  { key: "allergic_reaction", label: "Allergic reaction" },
+  { key: "illness", label: "Illness / vomiting" },
+  { key: "behavioural", label: "Behavioural" },
+  { key: "other", label: "Other" },
+] as const;
+
+export const incidentTypeLabel = (key: string) =>
+  INCIDENT_TYPES.find((t) => t.key === key)?.label ?? key;
+
+export interface Incident {
+  id: string;
+  occurredAt: string;
+  reportedBy: "staff" | "parent";
+  reporterName: string | null;
+  types: string[];
+  description: string | null;
+  child: { id: string; name: string } | null;
+  loggedBy: string | null;
+  createdAt: string;
 }
 
 export const money = (cents: number) => `$${(cents / 100).toFixed(2)}`;

@@ -10,9 +10,11 @@ const NAV = [
   { href: "/dashboard", label: "Today's roster", icon: "🏠" },
   { href: "/families", label: "Families & children", icon: "👪" },
   { href: "/attendance", label: "Bookings", icon: "📅" },
+  { href: "/incidents", label: "Incidents", icon: "🩹" },
 ];
 const ADMIN_NAV = [
   { href: "/reports", label: "Reports", icon: "📊" },
+  { href: "/finance", label: "Finance", icon: "💰" },
   { href: "/staff", label: "Staff", icon: "🧑‍🏫" },
   { href: "/settings", label: "Settings", icon: "⚙️" },
 ];

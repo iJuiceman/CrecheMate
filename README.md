@@ -78,6 +78,25 @@ contact** details, needs no court booking, and runs on its own.
   online payments run in **test mode** (auto-succeed stub, so the whole flow
   works with no Stripe account). Unpaid checkouts are tracked as outstanding; a
   fee can also be waived.
+- **Incidents** (all staff): a log of anything that happens during or after a
+  visit — staff record what they saw, or what a **parent reported at the desk**
+  (with the parent's name). Each entry ties to a child (or "no specific
+  child"), when it occurred, and **tick-box categories** (fall/trip, bump,
+  cut/graze, bite, allergic reaction, illness, behavioural) plus an **"Other"**
+  option with a required description. Free-text details are **encrypted at
+  rest** like medical notes. Entries are permanent records — only an admin can
+  delete one.
+- **Finance & Xero export** (admin): a cash-basis view of money actually
+  collected over any date range — collected / refunded / net, outstanding and
+  waived, split by payment method, with every transaction listed. Export as a
+  **Xero sales-invoice CSV** (matches Xero's official import template —
+  *Business → Invoices → Import*, no Xero developer setup needed), a plain
+  **transactions CSV**, or a **PDF financial report**. Invoice numbers are
+  deterministic so re-importing an overlapping range never duplicates;
+  refunded online prepayments export as an invoice + credit-note pair that
+  nets to zero. The Xero revenue **account code, GST treatment and invoice
+  prefix** are configurable under Settings (approved child care is GST-free;
+  a casual club creche may not qualify — ask your bookkeeper).
 - **Reports** (admin): a Reports section with a date-range picker and tabs for
   **Financials** (fees collected / outstanding / waived, by payment method,
   online prepayments + refunds), **Attendance & occupancy** (sessions, hours,
@@ -87,7 +106,8 @@ contact** details, needs no court booking, and runs on its own.
   with refunds, and who checked children in/out). Each tab has summary tiles,
   charts, and a one-click **CSV export** to hand to your accountant.
 - **Settings** (admin): service name, capacity, hourly rate, opening hours,
-  timezone, ABN.
+  timezone, ABN, courts pick-list, waiver wording, Stripe account, and Xero
+  export coding (account code, tax type, invoice prefix).
 
 ## Stack
 
@@ -137,4 +157,5 @@ cd apps/web && npm run dev                                    # web on :3000
 
 `User` (staff) · `Guardian` (parent) → `Child` → `EmergencyContact` ·
 `Attendance` (booking / drop-in with check-in/out, fee, payment) ·
+`Incident` (staff- or parent-reported, tick-box categories, encrypted details) ·
 `FacilitySettings` (the single service's settings).

@@ -112,6 +112,32 @@ docker compose -f docker-compose.yml -f docker-compose.dev.yml build && \
 New Prisma models: add a migration; the API container runs
 `prisma migrate deploy` on start.
 
+- **Incidents** (`incidents` module, any signed-in staff; web `(app)/incidents`,
+  in the all-staff nav): a log of incidents during/after a visit. Each entry:
+  optional child, when it occurred, **who reported it** (`staff` | `parent` —
+  parents have no logins, so staff record what a parent reports at the desk,
+  with the parent's name), tick-box `types` from the fixed list in
+  `incidents.dto.ts` (mirrored with labels in web `lib/types.ts`), and free-text
+  details — **required when "other" is ticked**, encrypted at rest like medical
+  notes since they may describe injuries. Deleting an entry is admin-only;
+  entries are otherwise immutable records.
+- **Finance** (`finance` module, **admin-only**; web `(app)/finance` in the
+  admin nav): accounting exports on a **cash basis** — transactions belong to a
+  window by the day money moved (`paidAt` / refund `decidedAt`, facility-local),
+  unlike Reports which slices by service date. Three exports over a date range:
+  **Xero sales CSV** (Xero's official sales-invoice import template; import via
+  Business → Invoices → Import choosing *Tax Inclusive*), **transactions CSV**
+  (client-side via `lib/csv.ts`), and a **PDF report** (`finance.pdf.ts`,
+  pdfkit). Invoice numbers are deterministic from row ids
+  (`<prefix>-<first-8-of-uuid>`), so re-importing overlapping ranges is
+  idempotent — Xero skips numbers it already has. Declined-and-refunded online
+  prepayments export as an invoice + credit-note pair (`-B-` / `-R-`, negative
+  UnitAmount) netting to zero so both bank transactions reconcile. Account code,
+  AU tax type (`GST Free Income` default — approved child care is GST-free, but
+  a club creche may not qualify; ask the bookkeeper) and invoice prefix live on
+  FacilitySettings, editable under **Settings → Finance — Xero export**.
+  Authenticated file downloads go through `api.download()` (fetch + Bearer +
+  blob), since plain links can't carry the JWT.
 - **Reporting** (`reports` module, **admin-only** via RolesGuard): summary +
   financial + attendance/occupancy + families + online-bookings/staff, over a
   facility-tz date range. Aggregated in memory (small data volumes). The web
@@ -125,4 +151,4 @@ New Prisma models: add a migration; the API container runs
 - Receipts/PDF, reporting/exports, daily attendance sheet.
 - Parent-facing portal beyond self-registration + booking (parents can't yet
   view/manage their own bookings after submitting).
-- QR check-in, photos, incident/accident logs, immunisation records.
+- QR check-in, photos, immunisation records.

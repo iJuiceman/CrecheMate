@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { api } from "@/lib/api";
-import { Settings } from "@/lib/types";
+import { Settings, XERO_TAX_TYPES } from "@/lib/types";
 
 export default function SettingsPage() {
   const [s, setS] = useState<Settings | null>(null);
@@ -158,6 +158,55 @@ export default function SettingsPage() {
       </div>
 
       <PaymentsSection settings={s} onChange={setS} />
+      <XeroSection settings={s} onChange={setS} />
+    </div>
+  );
+}
+
+function XeroSection({ settings, onChange }: { settings: Settings; onChange: (s: Settings) => void }) {
+  const [busy, setBusy] = useState(false);
+  const [err, setErr] = useState<string | null>(null);
+  const [saved, setSaved] = useState(false);
+
+  async function save() {
+    setBusy(true); setErr(null); setSaved(false);
+    try {
+      const updated = await api.patch<Settings>("/settings", {
+        xeroAccountCode: settings.xeroAccountCode,
+        xeroTaxType: settings.xeroTaxType,
+        xeroInvoicePrefix: settings.xeroInvoicePrefix,
+      });
+      onChange(updated);
+      setSaved(true);
+    } catch (e) { setErr(e instanceof Error ? e.message : "Couldn't save."); }
+    finally { setBusy(false); }
+  }
+
+  return (
+    <div className="card mt-4 max-w-lg space-y-4">
+      <div>
+        <h2 className="font-display text-lg font-bold text-ink">Finance — Xero export</h2>
+        <p className="mt-1 text-sm text-ink/60">How sales lines are coded in the Finance page&apos;s Xero CSV export. Ask your bookkeeper which revenue account and GST treatment apply — approved child care is GST-free, but a casual club creche may not qualify.</p>
+      </div>
+      <div className="grid grid-cols-3 gap-3">
+        <div>
+          <label className="label">Account code</label>
+          <input className="field" value={settings.xeroAccountCode} onChange={(e) => onChange({ ...settings, xeroAccountCode: e.target.value })} placeholder="200" />
+        </div>
+        <div>
+          <label className="label">Tax type</label>
+          <select className="field" value={settings.xeroTaxType} onChange={(e) => onChange({ ...settings, xeroTaxType: e.target.value })}>
+            {XERO_TAX_TYPES.map((t) => <option key={t} value={t}>{t}</option>)}
+          </select>
+        </div>
+        <div>
+          <label className="label">Invoice prefix</label>
+          <input className="field" value={settings.xeroInvoicePrefix} onChange={(e) => onChange({ ...settings, xeroInvoicePrefix: e.target.value })} placeholder="CM" />
+        </div>
+      </div>
+      {err && <p className="rounded-lg bg-coral/10 px-3 py-2 text-sm text-coral">{err}</p>}
+      {saved && <p className="rounded-lg bg-teal-light px-3 py-2 text-sm text-teal-dark">Saved.</p>}
+      <button className="btn" onClick={save} disabled={busy}>{busy ? "Saving…" : "Save Xero settings"}</button>
     </div>
   );
 }
