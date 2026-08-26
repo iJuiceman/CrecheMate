@@ -7,7 +7,7 @@ import { LoginDto, RegisterFirstAdminDto } from "./dto";
 
 // A constant bcrypt hash to compare against when the account isn't found, so
 // login timing doesn't reveal whether a username is registered.
-const DUMMY_HASH = bcrypt.hashSync("account-enumeration-timing-equalizer", 10);
+const DUMMY_HASH = bcrypt.hashSync("account-enumeration-timing-equalizer", 12);
 
 @Injectable()
 export class AuthService {
@@ -21,7 +21,7 @@ export class AuthService {
    * concurrent setup requests can't both observe zero users and each plant an
    * admin — the second transaction conflicts and aborts. */
   async registerFirstAdmin(dto: RegisterFirstAdminDto) {
-    const passwordHash = await bcrypt.hash(dto.password, 10);
+    const passwordHash = await bcrypt.hash(dto.password, 12);
     const user = await this.prisma
       .$transaction(
         async (tx) => {

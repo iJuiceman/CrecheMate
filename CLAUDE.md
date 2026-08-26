@@ -74,13 +74,17 @@ session online** (`/book`) with card prepayment, which staff confirm.
   **immediately creates the confirmed bookings**. Family records are resolved by
   **parent phone** (`resolveFamily`): reuse an existing guardian with the same
   digits (and reuse a child of theirs by name, else add it), otherwise create a
-  new family. Attendances are made via `AttendanceService.createConfirmedBookings`
-  (bulk, one tx) — `paymentStatus: paid`, `paymentMethod: online`, `paidAt` = charge
+  new family. The capacity check + all N attendance rows + their
+  `bookingRequestChild` links are created in **one `Serializable` transaction**
+  (in `payRequest`) so concurrent auto-confirm bookings can't oversell the
+  child:staff ratio and a link failure rolls the whole thing back. Each
+  attendance: `paymentStatus: paid`, `paymentMethod: online`, `paidAt` = charge
   time, and **`stripePaymentIntentId` NULL** (the shared intent lives on the
   `BookingRequest`, so `@unique` on the attendance still holds; refunds resolve
   the intent via `bookingRequestChild.attendanceId → request`, always a *partial*
-  refund of the shared intent). If the session **filled** between charge and
-  create, the payment is **fully refunded** and the request declined. **Court is
+  refund of the shared intent). If the session **filled** (or a serialization
+  conflict) between charge and create, the payment is **fully refunded** and the
+  request declined (nothing was committed). **Court is
   no longer collected online** — the form shows a prominent "creche is for
   players / times must match your court booking" notice; staff capture the actual
   court at check-in (`Attendance.court` stays nullable). The legacy staff

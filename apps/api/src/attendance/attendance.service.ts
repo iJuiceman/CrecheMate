@@ -277,43 +277,6 @@ export class AttendanceService {
     return created;
   }
 
-  /**
-   * Create several confirmed, paid online bookings for the same window in one
-   * transaction (a parent booking multiple children). Payment is recorded on the
-   * BookingRequest (one shared Stripe intent), so each attendance is marked paid
-   * with no per-row intent id; refunds resolve the intent via the request.
-   */
-  async createConfirmedBookings(
-    items: Array<{ childId: string; start: Date; end: Date; feeCents: number; paidAt: Date; notes?: string | null }>,
-  ) {
-    const f = await this.facility();
-    return this.prisma.$transaction(async (tx) => {
-      const created: any[] = [];
-      for (const p of items) {
-        const { date } = this.dayBounds(f.timezone, DateTime.fromJSDate(p.start).setZone(f.timezone).toISODate() ?? undefined);
-        created.push(
-          await tx.attendance.create({
-            data: {
-              childId: p.childId,
-              serviceDate: date,
-              scheduledStart: p.start,
-              scheduledEnd: p.end,
-              status: "booked",
-              feeCents: p.feeCents,
-              paymentStatus: "paid",
-              paymentMethod: "online",
-              stripePaymentIntentId: null, // shared intent lives on the BookingRequest
-              paidAt: p.paidAt,
-              notes: p.notes ?? null,
-            },
-            include: this.childInclude,
-          }),
-        );
-      }
-      return created;
-    });
-  }
-
   /** Walk-in: create the attendance already checked in. */
   async dropIn(actor: JwtPayload, dto: DropInDto) {
     const f = await this.facility();

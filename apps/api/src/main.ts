@@ -3,7 +3,21 @@ import { NestFactory } from "@nestjs/core";
 import helmet from "helmet";
 import { AppModule } from "./app.module";
 
+// Fail closed on missing/weak secrets rather than booting and signing tokens
+// with a placeholder or encrypting medical notes under an all-zeros key.
+function assertSecrets() {
+  const jwt = process.env.JWT_SECRET;
+  if (!jwt || jwt.length < 32) {
+    throw new Error("JWT_SECRET must be set and at least 32 characters. Refusing to start.");
+  }
+  const key = process.env.CHILD_DATA_ENCRYPTION_KEY ?? "";
+  if (!/^[0-9a-fA-F]{64}$/.test(key) || /^0{64}$/.test(key)) {
+    throw new Error("CHILD_DATA_ENCRYPTION_KEY must be 64 hex chars (32 bytes) and not all-zeros. Refusing to start.");
+  }
+}
+
 async function bootstrap() {
+  assertSecrets();
   const app = await NestFactory.create(AppModule);
   // Behind nginx (TLS termination + reverse proxy) we trust the first proxy hop
   // so req.ip / rate limiting see the real client via X-Forwarded-For. But when

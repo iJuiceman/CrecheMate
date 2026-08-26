@@ -9,6 +9,11 @@ import { JwtPayload } from "../auth/jwt-payload.interface";
 import { CreateBookingRequestDto } from "./bookings.dto";
 
 const onlyDigits = (s: string) => (s ?? "").replace(/\D/g, "");
+// Canonical AU form so +61 4xx / 04xx of the same number dedupe to one family.
+const canonicalPhone = (s: string) => {
+  const d = onlyDigits(s);
+  return d.length === 11 && d.startsWith("61") ? "0" + d.slice(2) : d;
+};
 
 @Injectable()
 export class BookingsService {
@@ -185,9 +190,9 @@ export class BookingsService {
     parentEmail: string | null;
     children: { firstName: string; lastName: string; birthMonth: number | null; birthYear: number | null }[];
   }): Promise<string[]> {
-    const wanted = onlyDigits(request.parentPhone);
+    const wanted = canonicalPhone(request.parentPhone);
     const all = await this.prisma.guardian.findMany({ include: { children: true } });
-    let guardian = all.find((g) => onlyDigits(g.phone) === wanted) ?? null;
+    let guardian = all.find((g) => canonicalPhone(g.phone) === wanted) ?? null;
     if (!guardian) {
       guardian = await this.prisma.guardian.create({
         data: {
@@ -240,37 +245,57 @@ export class BookingsService {
     const start = request.requestedStart;
     const end = request.requestedEnd;
     const n = request.children.length;
-
-    // Card already charged: if the session filled meanwhile, fully refund + back out.
-    if ((await this.spacesFree(start, end, id)) < n) {
-      await this.payments.refund(stripePaymentIntentId);
-      await this.prisma.bookingRequest.update({
-        where: { id },
-        data: { status: "declined", paymentStatus: "unpaid", notes: `${request.notes ? request.notes + " · " : ""}Auto-refunded: session filled` },
-      });
-      throw new ConflictException("Sorry — that session just filled up, so your payment has been fully refunded. Please choose another time.");
-    }
+    const f = await this.settings.get();
 
     try {
       const paidAt = new Date();
       const childIds = await this.resolveFamily(request);
-      const bookings = await this.attendance.createConfirmedBookings(
-        request.children.map((c, i) => ({ childId: childIds[i], start, end, feeCents: c.feeCents, paidAt, notes: request.notes })),
+      // Capacity check + all N attendance rows + their request-child links happen
+      // in ONE serializable transaction, so concurrent auto-confirm bookings can't
+      // oversell the child:staff ratio, and a link failure rolls the whole thing
+      // back (leaving the catch's full refund correct).
+      await this.prisma.$transaction(
+        async (tx) => {
+          const overlapping = await tx.attendance.count({
+            where: { status: { in: ["booked", "checked_in"] }, scheduledStart: { lt: end }, scheduledEnd: { gt: start } },
+          });
+          if (overlapping + n > f.capacity) throw new ConflictException("__SESSION_FULL__");
+          const serviceDate = DateTime.fromJSDate(start).setZone(f.timezone).startOf("day").toJSDate();
+          for (let i = 0; i < request.children.length; i++) {
+            const c = request.children[i];
+            const att = await tx.attendance.create({
+              data: {
+                childId: childIds[i],
+                serviceDate,
+                scheduledStart: start,
+                scheduledEnd: end,
+                status: "booked",
+                feeCents: c.feeCents,
+                paymentStatus: "paid",
+                paymentMethod: "online",
+                stripePaymentIntentId: null, // shared intent lives on the BookingRequest
+                paidAt,
+                notes: request.notes,
+              },
+            });
+            await tx.bookingRequestChild.update({ where: { id: c.id }, data: { childId: childIds[i], attendanceId: att.id } });
+          }
+        },
+        { isolationLevel: "Serializable" },
       );
-      await Promise.all(
-        request.children.map((c, i) =>
-          this.prisma.bookingRequestChild.update({ where: { id: c.id }, data: { childId: childIds[i], attendanceId: bookings[i].id } }),
-        ),
-      );
-      return { ok: true, bookedCount: bookings.length };
-    } catch {
-      // Charged but couldn't create the booking(s): refund and mark the request
-      // so the parent isn't out of pocket for a booking that didn't happen.
+      return { ok: true, bookedCount: n };
+    } catch (e) {
+      // Charged but the booking didn't happen (session full, a serialization
+      // conflict from a concurrent booking, or an error). Nothing was committed,
+      // so a full refund is correct. Record why on the request.
+      const full = e instanceof ConflictException && e.message === "__SESSION_FULL__";
       await this.payments.refund(stripePaymentIntentId).catch(() => {});
       await this.prisma.bookingRequest
-        .update({ where: { id }, data: { status: "declined", paymentStatus: "unpaid", notes: `${request.notes ? request.notes + " · " : ""}Auto-refunded: booking error` } })
+        .update({ where: { id }, data: { status: "declined", paymentStatus: "unpaid", notes: `${request.notes ? request.notes + " · " : ""}Auto-refunded: ${full ? "session filled" : "booking error"}` } })
         .catch(() => {});
-      throw new BadRequestException("Something went wrong finalising your booking — your payment has been refunded. Please try again.");
+      throw full
+        ? new ConflictException("Sorry — that session just filled up, so your payment has been fully refunded. Please choose another time.")
+        : new BadRequestException("Couldn't finalise your booking just now — your payment has been refunded. Please try again.");
     }
   }
 

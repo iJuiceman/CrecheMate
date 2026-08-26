@@ -24,5 +24,7 @@ COPY --from=build /app/apps/api/dist /app/apps/api/dist
 COPY --from=build /app/apps/api/prisma /app/apps/api/prisma
 COPY --from=build /app/apps/api/package.json /app/apps/api/package.json
 WORKDIR /app/apps/api
+# Drop root — the API writes nothing to disk (DB only).
+USER node
 EXPOSE 5000
 CMD npx prisma migrate deploy && node dist/main.js

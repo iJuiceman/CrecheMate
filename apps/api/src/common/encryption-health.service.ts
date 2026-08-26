@@ -19,30 +19,34 @@ export class EncryptionHealthService implements OnModuleInit {
   constructor(private prisma: PrismaService) {}
 
   async onModuleInit() {
+    let s;
     try {
-      const s = await this.prisma.facilitySettings.findFirst();
-      if (!s) return; // no settings row yet (fresh DB) — canary is set on a later boot
-      if (!s.encryptionCanary) {
-        await this.prisma.facilitySettings.update({
-          where: { id: s.id },
-          data: { encryptionCanary: encryptField(SENTINEL) },
-        });
-        this.logger.log("Encryption canary initialised.");
-        return;
-      }
-      if (decryptField(s.encryptionCanary) === SENTINEL) {
-        this.logger.log("Encryption key verified against stored canary.");
-      } else {
-        this.logger.error(
-          "CHILD_DATA_ENCRYPTION_KEY does not match the key that encrypted existing " +
-            "data. Medical notes, waiver signatures, incident details and the Stripe " +
-            "secret will read back EMPTY. Restore the original key — no encrypted data " +
-            "has been altered.",
-        );
-      }
+      s = await this.prisma.facilitySettings.findFirst();
     } catch (e) {
-      // Includes a missing/wrong-length key (getKey throws). Never block boot.
-      this.logger.error(`Encryption canary check failed: ${(e as Error).message}`);
+      // Transient (DB not ready yet) — don't block boot on a hiccup.
+      this.logger.error(`Encryption canary check skipped (DB unavailable): ${(e as Error).message}`);
+      return;
     }
+    if (!s) return; // no settings row yet (fresh DB) — canary is set on a later boot
+    if (!s.encryptionCanary) {
+      await this.prisma.facilitySettings.update({
+        where: { id: s.id },
+        data: { encryptionCanary: encryptField(SENTINEL) },
+      });
+      this.logger.log("Encryption canary initialised.");
+      return;
+    }
+    if (decryptField(s.encryptionCanary) === SENTINEL) {
+      this.logger.log("Encryption key verified against stored canary.");
+      return;
+    }
+    // Wrong/rotated key: FAIL CLOSED rather than silently reading medical notes,
+    // waiver signatures, incident details and the Stripe secret back as EMPTY.
+    this.logger.error(
+      "CHILD_DATA_ENCRYPTION_KEY does not match the key that encrypted existing data. " +
+        "Refusing to start so blank allergy/medical info is never shown. Restore the " +
+        "original key — no encrypted data has been altered.",
+    );
+    throw new Error("Encryption key mismatch — refusing to start.");
   }
 }

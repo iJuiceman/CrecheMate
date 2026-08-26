@@ -29,7 +29,7 @@ export class UsersService {
     const existing = await this.prisma.user.findUnique({ where: { username: dto.username.toLowerCase() } });
     if (existing) throw new ConflictException("A staff member with this username already exists");
     const tempPassword = dto.password ?? randomBytes(6).toString("base64url");
-    const passwordHash = await bcrypt.hash(tempPassword, 10);
+    const passwordHash = await bcrypt.hash(tempPassword, 12);
     const user = await this.prisma.user.create({
       data: {
         username: dto.username.toLowerCase(),
@@ -66,7 +66,7 @@ export class UsersService {
     const user = await this.prisma.user.findUnique({ where: { id } });
     if (!user) throw new NotFoundException("Staff member not found");
     const tempPassword = randomBytes(6).toString("base64url");
-    await this.prisma.user.update({ where: { id }, data: { passwordHash: await bcrypt.hash(tempPassword, 10) } });
+    await this.prisma.user.update({ where: { id }, data: { passwordHash: await bcrypt.hash(tempPassword, 12) } });
     return { temporaryPassword: tempPassword };
   }
 }

@@ -20,4 +20,6 @@ COPY --from=build /app/apps/web/.next/static ./apps/web/.next/static
 COPY --from=build /app/apps/web/public ./apps/web/public
 EXPOSE 3000
 WORKDIR /app/apps/web
+# Drop root — the standalone server needs no write access.
+USER node
 CMD ["node", "server.js"]
