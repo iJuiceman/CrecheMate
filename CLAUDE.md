@@ -125,9 +125,9 @@ session online** (`/book`) with card prepayment, which staff confirm.
   never pretends a real charge happened. `PAYMENTS_TEST_MODE=true` forces the
   env-key fallback off.
 - Fee = hours × `hourlyRateCents`, with the billed time **rounded up to the
-  nearest ¼ hour** (`feeFor` in both attendance + bookings services), finalised
-  at check-out from actual time in care. Any part-quarter counts as a full 15
-  min, so a very short stay bills a 15-min minimum.
+  nearest ½ hour (30-minute increments)** (`feeFor` in both attendance + bookings
+  services), finalised at check-out from actual time in care. Any part-half-hour
+  counts as a full 30 min, so a very short stay bills a 30-min minimum.
 - **Court**: `Attendance.court` records which court the parent is on while the
   child is in care (the club is attached to courts) — captured at drop-in /
   check-in, editable live (`POST /attendance/:id/court`), shown prominently on

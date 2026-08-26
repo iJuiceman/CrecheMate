@@ -19,10 +19,10 @@ export class BookingsService {
     private attendance: AttendanceService,
   ) {}
 
-  // Billed rounded UP to the nearest quarter-hour, matching the desk.
+  // Billed rounded UP to the nearest half-hour (30-min increments), matching the desk.
   private feeFor(start: Date, end: Date, hourlyRateCents: number): number {
     const hours = Math.max(0, (end.getTime() - start.getTime()) / 3_600_000);
-    const billedHours = Math.ceil(hours * 4) / 4;
+    const billedHours = Math.ceil(hours * 2) / 2;
     return Math.round(billedHours * hourlyRateCents);
   }
 

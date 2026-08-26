@@ -29,12 +29,12 @@ export class AttendanceService {
 
   /**
    * Fee for a span of care on the hourly rate. Time is billed rounded UP to the
-   * nearest quarter-hour (so any part-quarter counts as a full 15 minutes),
-   * which keeps billing tidy.
+   * nearest half-hour (so any part-half-hour counts as a full 30 minutes), which
+   * keeps billing in tidy 30-minute increments.
    */
   private feeFor(start: Date, end: Date, hourlyRateCents: number): number {
     const hours = Math.max(0, (end.getTime() - start.getTime()) / 3_600_000);
-    const billedHours = Math.ceil(hours * 4) / 4;
+    const billedHours = Math.ceil(hours * 2) / 2;
     return Math.round(billedHours * hourlyRateCents);
   }
 
