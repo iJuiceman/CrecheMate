@@ -19,8 +19,9 @@ contact** details, needs no court booking, and runs on its own.
   ships). Passwords are bcrypt-hashed; a suspended account can't sign in; the
   last active admin can't be locked out.
 - **Online booking (parents + phone).** Parents pre-book a session from
-  anywhere at `/book`: they pick a date and time within opening hours (with a
-  live price and availability check), enter their and their child's details
+  anywhere at `/book`: they pick a date and time within opening hours (up to a
+  configurable maximum session length — 2 hours by default — with a live price
+  and availability check), enter their and their child's details
   (AU phone validated, birth month/year dropdowns), and **pay by card — the
   booking is confirmed straight away, with no staff approval step**. A parent can
   **book several children in one session and one payment** (an “Add another

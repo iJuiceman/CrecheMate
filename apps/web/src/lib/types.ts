@@ -91,6 +91,7 @@ export interface Settings {
   timezone: string;
   capacity: number;
   hourlyRateCents: number;
+  maxBookingHours: number;
   lateCancelWindowHours: number;
   lateCancelRefundPercent: number;
   openTime: string;
@@ -155,6 +156,7 @@ export interface BookingConfig {
   closeTime: string;
   hourlyRateCents: number;
   capacity: number;
+  maxBookingHours: number;
   maxDaysAhead: number;
   courts: string[];
 }

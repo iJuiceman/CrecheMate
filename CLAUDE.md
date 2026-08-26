@@ -135,6 +135,11 @@ session online** (`/book`) with card prepayment, which staff confirm.
   court list, managed in Settings (add/remove, auto-saved via a courts-only
   PATCH) and surfaced as a **dropdown** at check-in/booking (free-text fallback
   only when no courts are configured).
+- **Max booking length**: a single pre-booked session is capped at
+  `FacilitySettings.maxBookingHours` (default **2h**), enforced server-side on
+  both the online (`bookings.validateWindow`) and staff-desk (`attendance.book`)
+  paths, surfaced in `GET /bookings/config`, and admin-editable in Settings.
+  Walk-in drop-ins are open-ended (the cap is on booked windows, not time in care).
 - **Court**: creche is only offered alongside a court booking. `court` is still
   required on the staff **desk** booking (`BookAttendanceDto`), but is **no longer
   collected on the public online form** (`CreateBookingRequestDto` dropped it) —

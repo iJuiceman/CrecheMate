@@ -316,6 +316,8 @@ model FacilitySettings {
   timezone        String   @default("Australia/Sydney")
   capacity        Int      @default(20) // max concurrent children
   hourlyRateCents Int      @default(1000) @map("hourly_rate_cents")
+  // Longest a single pre-booked session may be (online + staff bookings).
+  maxBookingHours Int      @default(2) @map("max_booking_hours")
   // Cancellation policy: a paid booking cancelled within this many hours of the
   // session start is refunded only this percentage; earlier cancellations get
   // 100%. Applied by staff (parents have no login).

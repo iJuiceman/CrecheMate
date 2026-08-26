@@ -36,6 +36,7 @@ export class BookingsService {
       closeTime: f.closeTime,
       hourlyRateCents: f.hourlyRateCents,
       capacity: f.capacity,
+      maxBookingHours: f.maxBookingHours,
       maxDaysAhead: 120,
       courts: f.courts,
     };
@@ -66,6 +67,9 @@ export class BookingsService {
     const eMin = eLocal.hour * 60 + eLocal.minute;
     if (sMin < openMin || eMin > closeMin) {
       throw new BadRequestException(`Bookings must be between ${f.openTime} and ${f.closeTime}`);
+    }
+    if (end.diff(start, "hours").hours > f.maxBookingHours) {
+      throw new BadRequestException(`A booking can be at most ${f.maxBookingHours} hours long`);
     }
     return { f, start: start.toJSDate(), end: end.toJSDate() };
   }

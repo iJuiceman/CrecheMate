@@ -189,6 +189,9 @@ export class AttendanceService {
     const start = new Date(dto.startAt);
     const end = new Date(dto.endAt);
     if (end <= start) throw new BadRequestException("End time must be after the start time");
+    if ((end.getTime() - start.getTime()) / 3_600_000 > f.maxBookingHours) {
+      throw new BadRequestException(`A booking can be at most ${f.maxBookingHours} hours long`);
+    }
     // Capacity across the booked window (booked + in-care overlaps).
     const overlapping = await this.prisma.attendance.count({
       where: {

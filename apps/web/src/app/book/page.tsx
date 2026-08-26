@@ -79,7 +79,11 @@ export default function BookPage() {
   const removeChild = (i: number) => setChildren((cs) => cs.filter((_, j) => j !== i));
 
   async function checkAndContinue() {
+    if (!cfg) return;
     if (!date || !start || !end) return setError("Please pick a date and times.");
+    const durHours = (new Date(`${date}T${end}`).getTime() - new Date(`${date}T${start}`).getTime()) / 3_600_000;
+    if (durHours <= 0) return setError("The end time must be after the start time.");
+    if (durHours > cfg.maxBookingHours) return setError(`Bookings can be at most ${cfg.maxBookingHours} hours long.`);
     setBusy(true); setError(null);
     try {
       const q = await api.post<{ ok: boolean; feeCents: number; spacesFree: number }>("/bookings/quote", { startAt: iso(date, start), endAt: iso(date, end) });
@@ -169,7 +173,7 @@ export default function BookPage() {
             <CourtNotice />
             <div className="rounded-card border border-line bg-white p-5 sm:p-6">
               <h2 className="font-display text-xl font-bold text-ink">When?</h2>
-              <p className="mb-4 mt-0.5 text-sm text-ink/55">Open {cfg.openTime}–{cfg.closeTime} · {money(cfg.hourlyRateCents)}/hour per child</p>
+              <p className="mb-4 mt-0.5 text-sm text-ink/55">Open {cfg.openTime}–{cfg.closeTime} · {money(cfg.hourlyRateCents)}/hour per child · max {cfg.maxBookingHours}h per booking</p>
               <div className="space-y-4">
                 <Labeled label="Date" required>
                   <input type="date" className={field} min={today} max={maxDate} value={date} onChange={(e) => { setDate(e.target.value); setQuote(null); }} />

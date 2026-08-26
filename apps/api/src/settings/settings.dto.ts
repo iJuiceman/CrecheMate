@@ -30,6 +30,12 @@ export class UpdateSettingsDto {
 
   @IsOptional()
   @IsInt()
+  @Min(1)
+  @Max(24)
+  maxBookingHours?: number;
+
+  @IsOptional()
+  @IsInt()
   @Min(0)
   @Max(168) // up to a week's notice
   lateCancelWindowHours?: number;

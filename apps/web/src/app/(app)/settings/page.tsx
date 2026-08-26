@@ -25,6 +25,7 @@ export default function SettingsPage() {
         name: s.name,
         capacity: s.capacity,
         hourlyRateCents: s.hourlyRateCents,
+        maxBookingHours: s.maxBookingHours,
         lateCancelWindowHours: s.lateCancelWindowHours,
         lateCancelRefundPercent: s.lateCancelRefundPercent,
         openTime: s.openTime,
@@ -88,9 +89,10 @@ export default function SettingsPage() {
             </div>
           </div>
         </div>
-        <div className="grid grid-cols-2 gap-3">
+        <div className="grid grid-cols-3 gap-3">
           <div><label className="label">Opens</label><input type="time" className="field" value={s.openTime} onChange={(e) => setS({ ...s, openTime: e.target.value })} /></div>
           <div><label className="label">Closes</label><input type="time" className="field" value={s.closeTime} onChange={(e) => setS({ ...s, closeTime: e.target.value })} /></div>
+          <div><label className="label">Max booking (hours)</label><input type="number" min={1} max={24} className="field" value={s.maxBookingHours} onChange={(e) => setS({ ...s, maxBookingHours: Number(e.target.value) })} /></div>
         </div>
         <div className="grid grid-cols-2 gap-3">
           <div>
