@@ -21,15 +21,18 @@ contact** details, needs no court booking, and runs on its own.
 - **Online booking (parents + phone).** Parents pre-book a session from
   anywhere at `/book`: they pick a date and time within opening hours (with a
   live price and availability check), enter their and their child's details
-  (AU phone validated, birth month/year dropdowns), and their **card is held,
-  not charged** (Stripe authorization). Every online booking is a **request** —
-  it appears in a staff queue with a suggested match to an existing family;
-  staff **approve** (which **captures/charges** the held card, matching an
-  existing child or creating a new family) or **decline** (which **releases the
-  hold** — the parent is never charged, so no refund is needed). This
-  approve-to-charge model avoids booking-error refunds entirely. Staff also take
-  bookings over the phone from the same page (“Take a booking”). Public
-  endpoints are rate-limited and never reveal who's already registered. See
+  (AU phone validated, birth month/year dropdowns), and **pay by card — the
+  booking is confirmed straight away, with no staff approval step**. A parent can
+  **book several children in one session and one payment** (an “Add another
+  child” button; the total is per-child fee × number of children). The court
+  isn't asked for online — instead a prominent reminder makes clear *creche is
+  for players and the creche time must match your court booking*; staff capture
+  the actual court at check-in. Family records are matched by parent phone
+  number (reused for repeat parents, created on first booking). If a session
+  happens to fill in the moment between two parents paying, the later payment is
+  **automatically refunded** in full. Staff also take bookings over the phone
+  from the same page (“Take a booking”). Public endpoints are rate-limited and
+  never reveal who's already registered. See
   [docs/EXTERNAL_ACCESS.md](docs/EXTERNAL_ACCESS.md) to expose it on your
   domain.
 - **Cancellation policy.** Cancelling a paid booking refunds 100% if it's more

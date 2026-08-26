@@ -1,5 +1,8 @@
 import { Type } from "class-transformer";
 import {
+  ArrayMaxSize,
+  ArrayMinSize,
+  IsArray,
   IsBoolean,
   IsInt,
   IsISO8601,
@@ -14,12 +17,21 @@ import {
 } from "class-validator";
 import { IsAuPhone } from "../common/phone.validator";
 
+// Up to this many children may be booked together on one session/payment.
+export const MAX_CHILDREN_PER_BOOKING = 8;
+
 export class BookingQuoteDto {
   @IsISO8601()
   startAt: string;
 
   @IsISO8601()
   endAt: string;
+
+  @IsOptional()
+  @IsInt()
+  @Min(1)
+  @Max(MAX_CHILDREN_PER_BOOKING)
+  childCount?: number;
 }
 
 class BookingParentDto {
@@ -71,9 +83,13 @@ export class CreateBookingRequestDto {
   @Type(() => BookingParentDto)
   parent: BookingParentDto;
 
-  @ValidateNested()
+  // One or more children on the same session, charged together in one payment.
+  @IsArray()
+  @ArrayMinSize(1)
+  @ArrayMaxSize(MAX_CHILDREN_PER_BOOKING)
+  @ValidateNested({ each: true })
   @Type(() => BookingChildDto)
-  child: BookingChildDto;
+  children: BookingChildDto[];
 
   @IsISO8601()
   startAt: string;
@@ -81,18 +97,9 @@ export class CreateBookingRequestDto {
   @IsISO8601()
   endAt: string;
 
-  // Required — the court booking this creche session is attached to. The window
-  // above is the court booking's window (same duration).
-  @IsString()
-  @MinLength(1)
-  @MaxLength(60)
-  court: string;
-
-  @IsOptional()
-  @IsString()
-  @MaxLength(120)
-  courtBookingName?: string;
-
+  // Court is no longer selected here — creche must be alongside a court booking,
+  // reinforced by a prominent notice on the form; staff capture the actual court
+  // at check-in.
   @IsOptional()
   @IsString()
   @MaxLength(500)

@@ -33,7 +33,7 @@ export class BookingsController {
   @Throttle({ default: { limit: 30, ttl: 60_000 } })
   @Post("quote")
   quote(@Body() dto: BookingQuoteDto) {
-    return this.bookings.quote(dto.startAt, dto.endAt);
+    return this.bookings.quote(dto.startAt, dto.endAt, dto.childCount);
   }
 
   @Public()

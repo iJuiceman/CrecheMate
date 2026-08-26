@@ -215,8 +215,30 @@ model BookingRequest {
 
   createdAt DateTime @default(now()) @map("created_at")
 
+  children BookingRequestChild[]
+
   @@index([status])
   @@map("booking_requests")
+}
+
+// One child on an online booking (a booking may include several children on the
+// same session + one payment). On confirm, each row records the created/matched
+// child and its attendance.
+model BookingRequestChild {
+  id         String  @id @default(uuid())
+  requestId  String  @map("request_id")
+  firstName  String  @map("first_name")
+  lastName   String  @map("last_name")
+  birthMonth Int?    @map("birth_month")
+  birthYear  Int?    @map("birth_year")
+  feeCents   Int     @map("fee_cents")
+  childId      String? @map("child_id")
+  attendanceId String? @unique @map("attendance_id")
+
+  request BookingRequest @relation(fields: [requestId], references: [id], onDelete: Cascade)
+
+  @@index([requestId])
+  @@map("booking_request_children")
 }
 
 // ── Incidents ───────────────────────────────────────────────────────────

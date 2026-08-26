@@ -91,26 +91,42 @@ export class BookingsService {
     return Math.max(0, f.capacity - booked - pending);
   }
 
-  /** Public: price + availability for a window, before taking any details. */
-  async quote(startAt: string, endAt: string) {
+  /** Public: price + availability for a window, before taking any details.
+   * `childCount` (default 1) gives the per-child fee, the total, and whether that
+   * many spaces are free. */
+  async quote(startAt: string, endAt: string, childCount = 1) {
     const { f, start, end } = await this.validateWindow(startAt, endAt);
     const spacesFree = await this.spacesFree(start, end);
+    const n = Math.max(1, childCount);
+    const perChild = this.feeFor(start, end, f.hourlyRateCents);
     return {
-      ok: spacesFree > 0,
-      feeCents: this.feeFor(start, end, f.hourlyRateCents),
+      ok: spacesFree >= n,
+      feeCents: perChild, // per child
+      childCount: n,
+      totalCents: perChild * n,
       spacesFree,
       capacity: f.capacity,
     };
   }
 
-  /** Public: create a pending request and a payment intent for the fee. */
+  /** Public: create a pending booking (with its children) + a payment intent for
+   * the total. The card is charged (automatic capture) when the parent confirms —
+   * there is no staff approval step. */
   async createRequest(dto: CreateBookingRequestDto) {
     const { f, start, end } = await this.validateWindow(dto.startAt, dto.endAt);
-    if ((await this.spacesFree(start, end)) <= 0) {
-      throw new ConflictException("That session is now full — please choose a different time.");
+    const n = dto.children.length;
+    const spacesFree = await this.spacesFree(start, end);
+    if (spacesFree < n) {
+      throw new ConflictException(
+        spacesFree <= 0
+          ? "That session is now full — please choose a different time."
+          : `Only ${spacesFree} space${spacesFree === 1 ? "" : "s"} left for that session — please remove a child or choose another time.`,
+      );
     }
-    const feeCents = this.feeFor(start, end, f.hourlyRateCents);
-    if (feeCents <= 0) throw new BadRequestException("That window is too short to book");
+    const perChild = this.feeFor(start, end, f.hourlyRateCents);
+    if (perChild <= 0) throw new BadRequestException("That window is too short to book");
+    const total = perChild * n;
+    const first = dto.children[0];
 
     const request = await this.prisma.bookingRequest.create({
       data: {
@@ -118,24 +134,36 @@ export class BookingsService {
         parentLastName: dto.parent.lastName.trim(),
         parentPhone: dto.parent.phone.trim(),
         parentEmail: dto.parent.email?.trim().toLowerCase() || null,
-        childFirstName: dto.child.firstName.trim(),
-        childLastName: dto.child.lastName.trim(),
-        childBirthMonth: dto.child.birthMonth,
-        childBirthYear: dto.child.birthYear,
+        // Legacy display columns mirror the first child.
+        childFirstName: first.firstName.trim(),
+        childLastName: first.lastName.trim(),
+        childBirthMonth: first.birthMonth,
+        childBirthYear: first.birthYear,
         requestedStart: start,
         requestedEnd: end,
-        court: dto.court.trim(),
-        courtBookingName: dto.courtBookingName?.trim() || null,
-        feeCents,
+        court: null, // captured by staff at check-in
+        courtBookingName: null,
+        feeCents: total,
         notes: dto.notes?.trim() || null,
+        children: {
+          create: dto.children.map((c) => ({
+            firstName: c.firstName.trim(),
+            lastName: c.lastName.trim(),
+            birthMonth: c.birthMonth,
+            birthYear: c.birthYear,
+            feeCents: perChild,
+          })),
+        },
       },
     });
 
-    // Manual capture: the card is only HELD now; it's charged when staff approve.
-    const intent = await this.payments.createIntent(feeCents, `booking:${request.id}`, { manualCapture: true });
+    // Automatic capture: the card is charged on confirmation (no staff approval).
+    const intent = await this.payments.createIntent(total, `booking:${request.id}`);
     return {
       requestId: request.id,
-      feeCents,
+      feeCents: total,
+      perChildCents: perChild,
+      childCount: n,
       clientSecret: intent.clientSecret,
       publishableKey: intent.publishableKey,
       testMode: intent.testMode,
@@ -143,20 +171,103 @@ export class BookingsService {
     };
   }
 
-  /** Public: record that the parent's card was authorised (hold placed). The
-   * booking then waits for a staff member to approve (capture) or decline
-   * (void the hold — no refund). */
+  /** Find (by parent phone) or create the family, and resolve each booking child
+   * to a Child id — reusing an existing child of that family by name, else
+   * creating it. Returns child ids aligned to `request.children`. */
+  private async resolveFamily(request: {
+    parentFirstName: string;
+    parentLastName: string;
+    parentPhone: string;
+    parentEmail: string | null;
+    children: { firstName: string; lastName: string; birthMonth: number | null; birthYear: number | null }[];
+  }): Promise<string[]> {
+    const wanted = onlyDigits(request.parentPhone);
+    const all = await this.prisma.guardian.findMany({ include: { children: true } });
+    let guardian = all.find((g) => onlyDigits(g.phone) === wanted) ?? null;
+    if (!guardian) {
+      guardian = await this.prisma.guardian.create({
+        data: {
+          firstName: request.parentFirstName,
+          lastName: request.parentLastName,
+          phone: request.parentPhone,
+          email: request.parentEmail,
+        },
+        include: { children: true },
+      });
+    }
+    const roster = [...guardian.children];
+    const ids: string[] = [];
+    for (const c of request.children) {
+      const match = roster.find(
+        (x) => x.active && x.firstName.toLowerCase() === c.firstName.toLowerCase() && x.lastName.toLowerCase() === c.lastName.toLowerCase(),
+      );
+      if (match) { ids.push(match.id); continue; }
+      const child = await this.prisma.child.create({
+        data: { guardianId: guardian.id, firstName: c.firstName, lastName: c.lastName, birthMonth: c.birthMonth, birthYear: c.birthYear },
+      });
+      roster.push(child); // so a repeated name in the same booking isn't created twice
+      ids.push(child.id);
+    }
+    return ids;
+  }
+
+  /** Public: the parent has confirmed the card and been CHARGED. Verify the
+   * payment, then create the confirmed booking(s) immediately — no staff
+   * approval. If the session just filled, the payment is fully refunded. */
   async payRequest(id: string, stripePaymentIntentId: string) {
-    const request = await this.prisma.bookingRequest.findUnique({ where: { id } });
-    if (!request) throw new NotFoundException("Booking request not found");
-    if (request.status !== "pending") throw new BadRequestException("This request has already been processed");
-    if (request.paymentStatus === "authorized" || request.paymentStatus === "paid") return { ok: true };
-    await this.payments.assertAuthorized(stripePaymentIntentId, request.feeCents, `booking:${id}`);
-    await this.prisma.bookingRequest.update({
-      where: { id },
-      data: { paymentStatus: "authorized", stripePaymentIntentId },
+    const request = await this.prisma.bookingRequest.findUnique({ where: { id }, include: { children: true } });
+    if (!request) throw new NotFoundException("Booking not found");
+    if (request.status === "confirmed") return { ok: true, bookedCount: request.children.length, alreadyConfirmed: true };
+    if (request.status !== "pending") throw new BadRequestException("This booking can't be completed");
+
+    // Verify the card was actually CHARGED for the full amount, bound to this booking.
+    await this.payments.assertSucceeded(stripePaymentIntentId, request.feeCents, `booking:${id}`);
+
+    // Atomically claim so a double-submit can't create two sets of bookings.
+    const claim = await this.prisma.bookingRequest.updateMany({
+      where: { id, status: "pending" },
+      data: { status: "confirmed", paymentStatus: "paid", stripePaymentIntentId, paidAt: new Date(), decidedAt: new Date() },
     });
-    return { ok: true };
+    if (claim.count === 0) {
+      const fresh = await this.prisma.bookingRequest.findUnique({ where: { id }, include: { children: true } });
+      return { ok: true, bookedCount: fresh?.children.length ?? 0, alreadyConfirmed: true };
+    }
+
+    const start = request.requestedStart;
+    const end = request.requestedEnd;
+    const n = request.children.length;
+
+    // Card already charged: if the session filled meanwhile, fully refund + back out.
+    if ((await this.spacesFree(start, end, id)) < n) {
+      await this.payments.refund(stripePaymentIntentId);
+      await this.prisma.bookingRequest.update({
+        where: { id },
+        data: { status: "declined", paymentStatus: "unpaid", notes: `${request.notes ? request.notes + " · " : ""}Auto-refunded: session filled` },
+      });
+      throw new ConflictException("Sorry — that session just filled up, so your payment has been fully refunded. Please choose another time.");
+    }
+
+    try {
+      const paidAt = new Date();
+      const childIds = await this.resolveFamily(request);
+      const bookings = await this.attendance.createConfirmedBookings(
+        request.children.map((c, i) => ({ childId: childIds[i], start, end, feeCents: c.feeCents, paidAt, notes: request.notes })),
+      );
+      await Promise.all(
+        request.children.map((c, i) =>
+          this.prisma.bookingRequestChild.update({ where: { id: c.id }, data: { childId: childIds[i], attendanceId: bookings[i].id } }),
+        ),
+      );
+      return { ok: true, bookedCount: bookings.length };
+    } catch {
+      // Charged but couldn't create the booking(s): refund and mark the request
+      // so the parent isn't out of pocket for a booking that didn't happen.
+      await this.payments.refund(stripePaymentIntentId).catch(() => {});
+      await this.prisma.bookingRequest
+        .update({ where: { id }, data: { status: "declined", paymentStatus: "unpaid", notes: `${request.notes ? request.notes + " · " : ""}Auto-refunded: booking error` } })
+        .catch(() => {});
+      throw new BadRequestException("Something went wrong finalising your booking — your payment has been refunded. Please try again.");
+    }
   }
 
   // ── Staff ────────────────────────────────────────────────────────────

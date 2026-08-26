@@ -60,22 +60,32 @@ session online** (`/book`) with card prepayment, which staff confirm.
 - Phone numbers are validated as Australian (`common/phone.validator.ts`,
   `IsAuPhone`) on the intake, booking, and staff family forms; the web mirrors
   the rule in `lib/phone.ts`.
-- External bookings (`bookings` module) are **request → staff-approve**, with
-  the card **authorised (held) not charged** until approval. Public routes
-  (`GET /bookings/config`, `POST /bookings/quote`, `POST /bookings`,
+- External bookings (`bookings` module) are **charge-on-book — no staff approval**
+  (changed 2026-08-26 from the earlier authorise-hold + staff-approve model).
+  Public routes (`GET /bookings/config`, `POST /bookings/quote`, `POST /bookings`,
   `POST /bookings/:id/pay`) are `@Public()` and **rate-limited** (30/min). Flow:
-  `POST /bookings` creates the `BookingRequest` (`pending`, `unpaid`) and a
-  **manual-capture** PaymentIntent (`createIntent(..., { manualCapture: true })`);
-  the parent's card is authorised via Elements; `POST /bookings/:id/pay` records
-  `paymentStatus: authorized` (`assertAuthorized`, NOT captured). Staff **approve**
-  (`confirm`) → `PaymentsService.capture` charges the held card, then
-  `createConfirmedBooking` (capacity-enforced) with `paidAt` = capture time;
-  staff **decline** → `PaymentsService.cancelAuthorization` voids the hold (no
-  charge, **no refund**). So rejected bookings never need a refund. Holds expire
-  in ~7 days, so `capture` can fail (hold lapsed) — confirm surfaces that and
-  rolls the claim back to pending. Confirm/decline atomically claim the request
-  (`updateMany where status=pending`) so they can't double-process. Authorised
-  pending requests count toward availability; capacity is re-checked at confirm.
+  `POST /bookings` creates a `BookingRequest` (`pending`) with a
+  `BookingRequestChild` per child (a parent can book **several children on one
+  session + one payment**, up to `MAX_CHILDREN_PER_BOOKING`) and an
+  **automatic-capture** PaymentIntent for the **total** (`perChild × N`); the
+  card is charged when the parent confirms via Elements; `POST /bookings/:id/pay`
+  then `assertSucceeded` (captured, amount = total, bound to `booking:<id>`),
+  atomically claims (`updateMany where status=pending` → `confirmed`), and
+  **immediately creates the confirmed bookings**. Family records are resolved by
+  **parent phone** (`resolveFamily`): reuse an existing guardian with the same
+  digits (and reuse a child of theirs by name, else add it), otherwise create a
+  new family. Attendances are made via `AttendanceService.createConfirmedBookings`
+  (bulk, one tx) — `paymentStatus: paid`, `paymentMethod: online`, `paidAt` = charge
+  time, and **`stripePaymentIntentId` NULL** (the shared intent lives on the
+  `BookingRequest`, so `@unique` on the attendance still holds; refunds resolve
+  the intent via `bookingRequestChild.attendanceId → request`, always a *partial*
+  refund of the shared intent). If the session **filled** between charge and
+  create, the payment is **fully refunded** and the request declined. **Court is
+  no longer collected online** — the form shows a prominent "creche is for
+  players / times must match your court booking" notice; staff capture the actual
+  court at check-in (`Attendance.court` stays nullable). The legacy staff
+  `confirm`/`decline`/`listRequests` endpoints remain for any pre-existing
+  authorised requests but new bookings never enter that state.
 - **Cancellation policy**: cancelling a paid booking (`POST /attendance/:id/cancel`)
   refunds 100% if more than `FacilitySettings.lateCancelWindowHours` (default 24)
   before the session start, otherwise `lateCancelRefundPercent` (default 50%).
@@ -125,12 +135,12 @@ session online** (`/book`) with card prepayment, which staff confirm.
   court list, managed in Settings (add/remove, auto-saved via a courts-only
   PATCH) and surfaced as a **dropdown** at check-in/booking (free-text fallback
   only when no courts are configured).
-- **Court booking is mandatory for pre-booked sessions** (creche is only
-  offered alongside a court booking): `court` is required on `BookAttendanceDto`
-  and `CreateBookingRequestDto`; `courtBookingName` (optional) records the name
-  the court is booked under when it differs from the parent. The booking window
-  *is* the court booking window (same duration). Walk-in drop-ins keep court
-  optional.
+- **Court**: creche is only offered alongside a court booking. `court` is still
+  required on the staff **desk** booking (`BookAttendanceDto`), but is **no longer
+  collected on the public online form** (`CreateBookingRequestDto` dropped it) —
+  the form shows a prominent reminder instead and staff capture the court at
+  check-in. The booking window *is* the court booking window (same duration).
+  Walk-in drop-ins keep court optional.
 
 ## Dev workflow
 
