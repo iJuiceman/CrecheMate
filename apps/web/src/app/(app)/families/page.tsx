@@ -54,6 +54,9 @@ export default function FamiliesPage() {
 }
 
 const nowYear = new Date().getFullYear();
+const MONTHS = ["January", "February", "March", "April", "May", "June", "July", "August", "September", "October", "November", "December"];
+const BIRTH_YEARS: number[] = [];
+for (let y = nowYear; y >= 2010; y--) BIRTH_YEARS.push(y);
 
 function NewFamily({ onClose, onCreated }: { onClose: () => void; onCreated: () => void }) {
   const [g, setG] = useState({ firstName: "", lastName: "", relationship: "mother", phone: "", email: "", addressLine: "", suburb: "", postcode: "" });
@@ -112,8 +115,14 @@ function NewFamily({ onClose, onCreated }: { onClose: () => void; onCreated: () 
         <div className="mt-2 grid grid-cols-2 gap-2">
           <input className="field" placeholder="First name" value={child.firstName} onChange={(e) => setChild({ ...child, firstName: e.target.value })} />
           <input className="field" placeholder="Last name" value={child.lastName} onChange={(e) => setChild({ ...child, lastName: e.target.value })} />
-          <input className="field" placeholder="Birth month (1-12)" inputMode="numeric" value={child.birthMonth} onChange={(e) => setChild({ ...child, birthMonth: e.target.value.replace(/\D/g, "") })} />
-          <input className="field" placeholder={`Birth year (e.g. ${nowYear - 4})`} inputMode="numeric" value={child.birthYear} onChange={(e) => setChild({ ...child, birthYear: e.target.value.replace(/\D/g, "") })} />
+          <select className="field" value={child.birthMonth} onChange={(e) => setChild({ ...child, birthMonth: e.target.value })}>
+            <option value="">Birth month…</option>
+            {MONTHS.map((m, i) => <option key={m} value={i + 1}>{m}</option>)}
+          </select>
+          <select className="field" value={child.birthYear} onChange={(e) => setChild({ ...child, birthYear: e.target.value })}>
+            <option value="">Birth year…</option>
+            {BIRTH_YEARS.map((y) => <option key={y} value={y}>{y}</option>)}
+          </select>
           <textarea className="field col-span-2" rows={2} placeholder="Allergies & medical requirements — anything the educator must know" value={child.medicalNotes} onChange={(e) => setChild({ ...child, medicalNotes: e.target.value })} />
         </div>
 

@@ -48,7 +48,8 @@ contact** details, needs no court booking, and runs on its own.
 - **Families & children.** Staff can also register a family in one step — the
   parent/guardian (name, relationship, phone, email, address) plus their first
   child. Each
-  child carries **birth month + year** (the age is computed, never stale),
+  child carries **birth month + year** (picked from dropdowns, matching the
+  online booking form; the age is computed, never stale),
   **allergies/medical requirements encrypted at rest** (AES-256-GCM), and one
   or more **emergency contacts** (name, relationship, phone, and whether
   they're authorised to collect the child). Add more children, edit anyone,
@@ -60,6 +61,13 @@ contact** details, needs no court booking, and runs on its own.
     arrival.
   - **Capacity** is enforced on both — check-in is refused when the service is
     full, and a booking is refused when its window is already full.
+- **Bookings calendar.** The Bookings page opens on a month calendar that's
+  **colour-coded by how busy each day is** (a teal heat scale, with the number
+  of confirmed bookings on each day), so current and upcoming demand is obvious
+  at a glance. Click any day to load that day's confirmed bookings below; today
+  is outlined, a coral dot flags days with online requests still awaiting
+  confirmation, and the header shows the upcoming/this-month totals with
+  month navigation.
 - **Today's roster** (the main desk screen): live "in care now" count vs.
   capacity, each child's **age, medical flags in red, parent name/phone, and
   emergency contacts**, **which court the parent is on** (captured at check-in

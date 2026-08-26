@@ -205,7 +205,18 @@ New Prisma models: add a migration; the API container runs
   Reports page (`(app)/reports`) has a date-range picker, tabs, KPI tiles,
   inline-SVG charts (`reports/charts.tsx` — teal single-hue for magnitude, a
   validated categorical set for payment-mix/booked-vs-dropin, all per the
-  data-viz method), tables, and per-tab CSV export (`lib/csv.ts`).
+  data-viz method), tables, and per-tab CSV export (`lib/csv.ts`). Each tab
+  fetches its own endpoint; the tab buttons `setData(null)` on click so a tab
+  never renders against the previous tab's differently-shaped data for a frame
+  (that caused a render crash). Keep that when adding tabs.
+- **Bookings calendar** (`(app)/attendance` + `components/BookingCalendar.tsx`):
+  a month heatmap on the bookings page, colour-coded by confirmed-booking count
+  per day (teal single-hue scaled against the busier of capacity / busiest day),
+  click a day to load its schedule, coral dot = days with pending online
+  requests. Backed by `GET /attendance/calendar?from&to` — per-day counts
+  (active attendances split booked/drop-in, plus pending requests), grouped by
+  `serviceDate` (stored at facility-tz midnight). Child birth month/year are
+  dropdowns everywhere (booking, intake, and the staff family add + edit forms).
 
 ## Not yet built (backlog)
 

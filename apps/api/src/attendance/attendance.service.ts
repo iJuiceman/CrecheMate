@@ -133,6 +133,50 @@ export class AttendanceService {
     return rows.map((a) => this.serialize(a));
   }
 
+  /**
+   * Per-day booking counts over [from, to] (facility-local dates) for the
+   * bookings calendar. Counts active attendances (excludes cancelled/no-show),
+   * split into pre-booked vs drop-in, plus pending online requests per day.
+   */
+  async calendar(from?: string, to?: string) {
+    const f = await this.facility();
+    const tz = f.timezone;
+    const startDt = (from ? DateTime.fromISO(from, { zone: tz }) : DateTime.now().setZone(tz).startOf("month")).startOf("day");
+    const endDt = (to ? DateTime.fromISO(to, { zone: tz }) : startDt.endOf("month")).startOf("day").plus({ days: 1 });
+    if (!startDt.isValid || !endDt.isValid || endDt <= startDt) {
+      throw new BadRequestException("Invalid calendar range");
+    }
+    const start = startDt.toJSDate();
+    const end = endDt.toJSDate();
+
+    const [atts, requests] = await Promise.all([
+      this.prisma.attendance.findMany({
+        where: { serviceDate: { gte: start, lt: end } },
+        select: { serviceDate: true, status: true, isDropIn: true },
+      }),
+      this.prisma.bookingRequest.findMany({
+        where: { status: "pending", requestedStart: { gte: start, lt: end } },
+        select: { requestedStart: true },
+      }),
+    ]);
+
+    const key = (d: Date) => DateTime.fromJSDate(d).setZone(tz).toISODate() as string;
+    const days = new Map<string, { date: string; total: number; booked: number; dropIn: number; pending: number }>();
+    const bump = (k: string) => days.get(k) ?? days.set(k, { date: k, total: 0, booked: 0, dropIn: 0, pending: 0 }).get(k)!;
+    for (const a of atts) {
+      if (a.status === "cancelled" || a.status === "no_show") continue;
+      const e = bump(key(a.serviceDate));
+      e.total++;
+      if (a.isDropIn) e.dropIn++; else e.booked++;
+    }
+    for (const q of requests) bump(key(q.requestedStart)).pending++;
+
+    return {
+      capacity: f.capacity,
+      days: [...days.values()].sort((a, b) => a.date.localeCompare(b.date)),
+    };
+  }
+
   private async loadChild(childId: string) {
     const child = await this.prisma.child.findFirst({ where: { id: childId, active: true } });
     if (!child) throw new NotFoundException("Child not found");

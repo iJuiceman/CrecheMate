@@ -71,7 +71,7 @@ export default function ReportsPage() {
         {TABS.map((t) => (
           <button
             key={t.key}
-            onClick={() => setTab(t.key)}
+            onClick={() => { setData(null); setTab(t.key); }}
             className={`-mb-px border-b-2 px-3 py-2 text-sm font-medium transition-colors ${
               tab === t.key ? "border-teal text-teal-dark" : "border-transparent text-ink/50 hover:text-ink"
             }`}

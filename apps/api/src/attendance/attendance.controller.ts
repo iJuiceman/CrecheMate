@@ -22,6 +22,11 @@ export class AttendanceController {
     return this.attendance.dashboard();
   }
 
+  @Get("calendar")
+  calendar(@Query("from") from?: string, @Query("to") to?: string) {
+    return this.attendance.calendar(from, to);
+  }
+
   @Get()
   list(@Query("date") date?: string) {
     return this.attendance.listByDate(date);

@@ -4,6 +4,7 @@ import { useCallback, useEffect, useState } from "react";
 import { api } from "@/lib/api";
 import { Attendance, BookingRequestRow, Guardian, Settings, money } from "@/lib/types";
 import CourtInput from "@/components/CourtInput";
+import BookingCalendar from "@/components/BookingCalendar";
 
 function fmtTime(iso: string | null): string {
   return iso ? new Date(iso).toLocaleTimeString("en-AU", { hour: "numeric", minute: "2-digit", hour12: true }) : "—";
@@ -26,6 +27,8 @@ export default function AttendancePage() {
   const [error, setError] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
   const [takeBooking, setTakeBooking] = useState(false);
+  const [calRefresh, setCalRefresh] = useState(0);
+  const bumpCal = () => setCalRefresh((x) => x + 1);
   const [courts, setCourts] = useState<string[]>([]);
   const [policy, setPolicy] = useState({ hours: 24, percent: 50 });
 
@@ -55,7 +58,7 @@ export default function AttendancePage() {
       const res = await api.post<{ refundedCents?: number; refundPercent?: number }>(`/attendance/${id}/cancel`);
       setError(null);
       setNotice(res.refundedCents ? `Booking cancelled — ${money(res.refundedCents)} refunded (${res.refundPercent}%).` : "Booking cancelled.");
-      loadDay();
+      loadDay(); bumpCal();
     } catch (e) {
       setError(e instanceof Error ? e.message : "Couldn't cancel.");
     }
@@ -82,16 +85,25 @@ export default function AttendancePage() {
           </h2>
           <div className="space-y-3">
             {requests.map((r) => (
-              <RequestCard key={r.id} req={r} onDone={(msg) => { setNotice(msg); setError(null); loadRequests(); loadDay(); }} onError={setError} />
+              <RequestCard key={r.id} req={r} onDone={(msg) => { setNotice(msg); setError(null); loadRequests(); loadDay(); bumpCal(); }} onError={setError} />
             ))}
           </div>
         </section>
       )}
 
+      {/* Bookings calendar — colour-coded by how busy each day is; click a day
+          to load its confirmed bookings below. */}
+      <section className="mt-6">
+        <BookingCalendar selected={date} refreshKey={calRefresh} onSelect={(iso) => { setDate(iso); document.getElementById("day-schedule")?.scrollIntoView({ behavior: "smooth", block: "start" }); }} />
+      </section>
+
       {/* Day schedule */}
-      <div className="mt-6">
-        <label className="label">Day</label>
-        <input type="date" className="field max-w-xs" value={date} onChange={(e) => setDate(e.target.value)} />
+      <div id="day-schedule" className="mt-6 flex flex-wrap items-end justify-between gap-2">
+        <div>
+          <label className="label">Bookings for</label>
+          <input type="date" className="field max-w-xs" value={date} onChange={(e) => setDate(e.target.value)} />
+        </div>
+        <p className="text-sm text-ink/60">{new Date(`${date}T00:00:00`).toLocaleDateString("en-AU", { weekday: "long", day: "numeric", month: "long", year: "numeric" })} · {rows.filter((r) => r.status !== "cancelled" && r.status !== "no_show").length} confirmed</p>
       </div>
       <div className="mt-3 space-y-2">
         {rows.map((a) => (
@@ -116,7 +128,7 @@ export default function AttendancePage() {
         {rows.length === 0 && <p className="rounded-card border border-dashed border-line p-8 text-center text-sm text-ink/50">Nothing on this day.</p>}
       </div>
 
-      {takeBooking && <TakeBookingModal courts={courts} onClose={() => setTakeBooking(false)} onBooked={(name) => { setTakeBooking(false); setNotice(`Booked ${name}.`); loadDay(); }} onError={setError} />}
+      {takeBooking && <TakeBookingModal courts={courts} onClose={() => setTakeBooking(false)} onBooked={(name) => { setTakeBooking(false); setNotice(`Booked ${name}.`); loadDay(); bumpCal(); }} onError={setError} />}
     </div>
   );
 }

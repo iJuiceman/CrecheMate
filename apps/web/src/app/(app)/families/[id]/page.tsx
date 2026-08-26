@@ -179,6 +179,9 @@ function BookForm({ child, onClose, onBooked, onError }: { child: ChildFull; onC
 }
 
 const nowYear = new Date().getFullYear();
+const MONTHS = ["January", "February", "March", "April", "May", "June", "July", "August", "September", "October", "November", "December"];
+const BIRTH_YEARS: number[] = [];
+for (let y = nowYear; y >= 2010; y--) BIRTH_YEARS.push(y);
 
 function GuardianForm({ family, onClose, onSaved }: { family: Guardian; onClose: () => void; onSaved: () => void }) {
   const [g, setG] = useState({
@@ -246,8 +249,14 @@ function ChildForm({ familyId, child, onClose, onSaved }: { familyId?: string; c
       <div className="grid grid-cols-2 gap-2">
         <input className="field" placeholder="First name" value={c.firstName} onChange={(e) => setC({ ...c, firstName: e.target.value })} />
         <input className="field" placeholder="Last name" value={c.lastName} onChange={(e) => setC({ ...c, lastName: e.target.value })} />
-        <input className="field" placeholder="Birth month (1-12)" inputMode="numeric" value={c.birthMonth} onChange={(e) => setC({ ...c, birthMonth: e.target.value.replace(/\D/g, "") })} />
-        <input className="field" placeholder={`Birth year (e.g. ${nowYear - 4})`} inputMode="numeric" value={c.birthYear} onChange={(e) => setC({ ...c, birthYear: e.target.value.replace(/\D/g, "") })} />
+        <select className="field" value={c.birthMonth} onChange={(e) => setC({ ...c, birthMonth: e.target.value })}>
+          <option value="">Birth month…</option>
+          {MONTHS.map((m, i) => <option key={m} value={i + 1}>{m}</option>)}
+        </select>
+        <select className="field" value={c.birthYear} onChange={(e) => setC({ ...c, birthYear: e.target.value })}>
+          <option value="">Birth year…</option>
+          {BIRTH_YEARS.map((y) => <option key={y} value={y}>{y}</option>)}
+        </select>
         <textarea className="field col-span-2" rows={2} placeholder="Allergies & medical requirements" value={c.medicalNotes} onChange={(e) => setC({ ...c, medicalNotes: e.target.value })} />
       </div>
       <p className="label mt-3">Emergency contacts</p>
