@@ -76,7 +76,7 @@ export class IntakeService {
               ? encryptField(dto.child.medicalNotes.trim())
               : null,
             emergencyContacts: {
-              create: dto.child.emergencyContacts.map((e) => ({
+              create: (dto.child.emergencyContacts ?? []).map((e) => ({
                 name: e.name.trim(),
                 relationship: e.relationship?.trim() || null,
                 phone: e.phone.trim(),

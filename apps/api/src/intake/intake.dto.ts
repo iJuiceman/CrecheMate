@@ -65,11 +65,13 @@ export class IntakeChildDto {
   @MaxLength(2000)
   medicalNotes?: string;
 
+  // ADDITIONAL emergency contacts — the registering parent (and any second
+  // parent) is always an emergency contact, so none are required.
+  @IsOptional()
   @IsArray()
-  @ArrayMinSize(1)
   @ValidateNested({ each: true })
   @Type(() => IntakeEmergencyContactDto)
-  emergencyContacts: IntakeEmergencyContactDto[];
+  emergencyContacts?: IntakeEmergencyContactDto[];
 }
 
 export class IntakeGuardianDto {

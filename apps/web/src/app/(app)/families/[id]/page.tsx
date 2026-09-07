@@ -7,6 +7,7 @@ import { api } from "@/lib/api";
 import { ChildFull, EmergencyContact, Guardian, Settings } from "@/lib/types";
 import CourtInput from "@/components/CourtInput";
 import WaiverSignModal from "@/components/WaiverSignModal";
+import RelationshipSelect from "@/components/RelationshipSelect";
 
 export default function FamilyDetail({ params }: { params: { id: string } }) {
   const router = useRouter();
@@ -76,6 +77,12 @@ export default function FamilyDetail({ params }: { params: { id: string } }) {
             child={c}
             waiverOk={currentWaiverVersion == null || family.waiverVersion === currentWaiverVersion}
             parentName={`${family.firstName} ${family.lastName}`}
+            parentContacts={[
+              { name: `${family.firstName} ${family.lastName}`, relationship: family.relationship, phone: family.phone },
+              ...(family.secondFirstName
+                ? [{ name: `${family.secondFirstName} ${family.secondLastName ?? ""}`.trim(), relationship: family.secondRelationship, phone: family.secondPhone }]
+                : []),
+            ]}
             onChange={load}
             onNotice={setNotice}
             onError={setError}
@@ -111,7 +118,7 @@ function WaiverStatus({ family }: { family: Guardian }) {
   );
 }
 
-function ChildCard({ child, waiverOk, parentName, onChange, onNotice, onError }: { child: ChildFull; waiverOk: boolean; parentName: string; onChange: () => void; onNotice: (s: string) => void; onError: (s: string) => void }) {
+function ChildCard({ child, waiverOk, parentName, parentContacts, onChange, onNotice, onError }: { child: ChildFull; waiverOk: boolean; parentName: string; parentContacts: { name: string; relationship: string | null; phone: string | null }[]; onChange: () => void; onNotice: (s: string) => void; onError: (s: string) => void }) {
   const [edit, setEdit] = useState(false);
   const [book, setBook] = useState(false);
   const [busy, setBusy] = useState(false);
@@ -137,6 +144,10 @@ function ChildCard({ child, waiverOk, parentName, onChange, onNotice, onError }:
           <p className="font-semibold text-ink">{child.firstName} {child.lastName}{child.age != null ? <span className="ml-2 text-sm font-normal text-ink/50">age {child.age}</span> : null}</p>
           {child.medicalNotes ? <p className="mt-1 rounded-md bg-coral/10 px-2 py-1 text-xs font-medium text-coral">⚕ {child.medicalNotes}</p> : <p className="mt-1 text-xs text-ink/40">No medical requirements listed</p>}
           <p className="mt-1 text-xs font-semibold uppercase tracking-wide text-ink/40">Emergency contacts</p>
+          {/* Parents are emergency contacts automatically. */}
+          {parentContacts.map((e, i) => (
+            <p key={`p${i}`} className="text-sm text-ink/70">{e.name}{e.relationship ? ` (${e.relationship})` : " (parent)"}{e.phone ? ` · ${e.phone}` : ""} <span className="text-xs text-ink/40">· parent</span></p>
+          ))}
           {child.emergencyContacts.map((e, i) => (
             <p key={i} className="text-sm text-ink/70">{e.name}{e.relationship ? ` (${e.relationship})` : ""} · {e.phone}{e.canPickup ? "" : " · not authorised to collect"}</p>
           ))}
@@ -274,14 +285,15 @@ function ChildForm({ familyId, child, onClose, onSaved }: { familyId?: string; c
     birthMonth: child?.birthMonth ? String(child.birthMonth) : "", birthYear: child?.birthYear ? String(child.birthYear) : "",
     medicalNotes: child?.medicalNotes ?? "",
   });
-  const [contacts, setContacts] = useState<EmergencyContact[]>(child?.emergencyContacts?.length ? child.emergencyContacts : [{ name: "", relationship: "", phone: "", canPickup: true }]);
+  // Parents are emergency contacts automatically — extras only.
+  const [contacts, setContacts] = useState<EmergencyContact[]>(child?.emergencyContacts ?? []);
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState<string | null>(null);
 
   async function save() {
     const valid = contacts.filter((x) => x.name.trim() && x.phone.trim());
     if (!c.firstName || !c.lastName) return setErr("Child name is required.");
-    if (valid.length === 0) return setErr("At least one emergency contact (name + phone).");
+    if (contacts.some((x) => x.name.trim() && !x.phone.trim())) return setErr("Each added emergency contact needs a phone number.");
     setBusy(true); setErr(null);
     const payload = {
       firstName: c.firstName, lastName: c.lastName,
@@ -312,18 +324,20 @@ function ChildForm({ familyId, child, onClose, onSaved }: { familyId?: string; c
         </select>
         <textarea className="field col-span-2" rows={2} placeholder="Allergies & medical requirements" value={c.medicalNotes} onChange={(e) => setC({ ...c, medicalNotes: e.target.value })} />
       </div>
-      <p className="label mt-3">Emergency contacts</p>
-      <div className="space-y-2">
+      <p className="label mt-3">Additional emergency contacts</p>
+      <p className="text-xs text-ink/50">The parents/guardians are emergency contacts automatically — list anyone else here.</p>
+      <div className="mt-1 space-y-2">
         {contacts.map((x, i) => (
-          <div key={i} className="grid grid-cols-12 gap-2">
+          <div key={i} className="grid grid-cols-12 items-start gap-2">
             <input className="field col-span-4" placeholder="Name" value={x.name} onChange={(e) => setContacts(contacts.map((y, j) => j === i ? { ...y, name: e.target.value } : y))} />
-            <input className="field col-span-3" placeholder="Relationship" value={x.relationship ?? ""} onChange={(e) => setContacts(contacts.map((y, j) => j === i ? { ...y, relationship: e.target.value } : y))} />
+            <div className="col-span-3"><RelationshipSelect value={x.relationship ?? ""} onChange={(v) => setContacts(contacts.map((y, j) => j === i ? { ...y, relationship: v } : y))} /></div>
             <input className="field col-span-3" placeholder="Phone" value={x.phone} onChange={(e) => setContacts(contacts.map((y, j) => j === i ? { ...y, phone: e.target.value } : y))} />
-            <label className="col-span-2 flex items-center gap-1 text-xs text-ink/60"><input type="checkbox" checked={x.canPickup} onChange={(e) => setContacts(contacts.map((y, j) => j === i ? { ...y, canPickup: e.target.checked } : y))} /> pickup</label>
+            <label className="col-span-1 flex items-center gap-1 pt-2.5 text-xs text-ink/60"><input type="checkbox" checked={x.canPickup} onChange={(e) => setContacts(contacts.map((y, j) => j === i ? { ...y, canPickup: e.target.checked } : y))} /> pickup</label>
+            <button className="col-span-1 pt-2 text-left text-xs text-coral hover:underline" onClick={() => setContacts(contacts.filter((_, j) => j !== i))}>✕</button>
           </div>
         ))}
       </div>
-      <button className="mt-2 text-sm font-medium text-teal" onClick={() => setContacts([...contacts, { name: "", relationship: "", phone: "", canPickup: true }])}>+ Add contact</button>
+      <button className="mt-2 text-sm font-medium text-teal" onClick={() => setContacts([...contacts, { name: "", relationship: "", phone: "", canPickup: true }])}>+ Add an emergency contact</button>
       {err && <p className="mt-3 text-sm text-coral">{err}</p>}
       <FormButtons onClose={onClose} onSave={save} busy={busy} />
     </Modal>

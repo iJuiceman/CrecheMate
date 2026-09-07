@@ -4,6 +4,7 @@ import Link from "next/link";
 import { useCallback, useEffect, useState } from "react";
 import { api } from "@/lib/api";
 import { EmergencyContact, Guardian } from "@/lib/types";
+import RelationshipSelect from "@/components/RelationshipSelect";
 
 export default function FamiliesPage() {
   const [families, setFamilies] = useState<Guardian[]>([]);
@@ -65,7 +66,8 @@ function NewFamily({ onClose, onCreated }: { onClose: () => void; onCreated: () 
   const [g, setG] = useState({ firstName: "", lastName: "", relationship: "mother", phone: "", email: "", addressLine: "", suburb: "", postcode: "" });
   const [g2, setG2] = useState({ firstName: "", lastName: "", relationship: "father", phone: "", email: "" });
   const [child, setChild] = useState({ firstName: "", lastName: "", birthMonth: "", birthYear: "", medicalNotes: "" });
-  const [contacts, setContacts] = useState<EmergencyContact[]>([{ name: "", relationship: "", phone: "", canPickup: true }]);
+  // Parents are emergency contacts automatically — extra contacts are optional.
+  const [contacts, setContacts] = useState<EmergencyContact[]>([]);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -73,7 +75,7 @@ function NewFamily({ onClose, onCreated }: { onClose: () => void; onCreated: () 
     if (!g.firstName || !g.lastName || !g.phone) return setError("Parent name and phone are required.");
     if (!child.firstName || !child.lastName) return setError("The child's name is required.");
     const validContacts = contacts.filter((c) => c.name.trim() && c.phone.trim());
-    if (validContacts.length === 0) return setError("Add at least one emergency contact (name + phone).");
+    if (contacts.some((c) => c.name.trim() && !c.phone.trim())) return setError("Each added emergency contact needs a phone number.");
     setBusy(true);
     setError(null);
     try {
@@ -148,21 +150,22 @@ function NewFamily({ onClose, onCreated }: { onClose: () => void; onCreated: () 
           <textarea className="field col-span-2" rows={2} placeholder="Allergies & medical requirements — anything the educator must know" value={child.medicalNotes} onChange={(e) => setChild({ ...child, medicalNotes: e.target.value })} />
         </div>
 
-        <h3 className="mt-5 text-sm font-bold text-ink">Emergency contacts</h3>
-        <p className="text-xs text-ink/50">At least one. Tick who is authorised to collect the child.</p>
+        <h3 className="mt-5 text-sm font-bold text-ink">Additional emergency contacts</h3>
+        <p className="text-xs text-ink/50">The parents/guardians above are emergency contacts automatically. Add anyone else who may need to be called, and tick who is authorised to collect the child.</p>
         <div className="mt-2 space-y-2">
           {contacts.map((c, i) => (
-            <div key={i} className="grid grid-cols-12 gap-2">
+            <div key={i} className="grid grid-cols-12 items-start gap-2">
               <input className="field col-span-4" placeholder="Name" value={c.name} onChange={(e) => setContacts(contacts.map((x, j) => j === i ? { ...x, name: e.target.value } : x))} />
-              <input className="field col-span-3" placeholder="Relationship" value={c.relationship ?? ""} onChange={(e) => setContacts(contacts.map((x, j) => j === i ? { ...x, relationship: e.target.value } : x))} />
+              <div className="col-span-3"><RelationshipSelect value={c.relationship ?? ""} onChange={(v) => setContacts(contacts.map((x, j) => j === i ? { ...x, relationship: v } : x))} /></div>
               <input className="field col-span-3" placeholder="Phone" value={c.phone} onChange={(e) => setContacts(contacts.map((x, j) => j === i ? { ...x, phone: e.target.value } : x))} />
-              <label className="col-span-2 flex items-center gap-1 text-xs text-ink/60">
+              <label className="col-span-1 flex items-center gap-1 pt-2.5 text-xs text-ink/60">
                 <input type="checkbox" checked={c.canPickup} onChange={(e) => setContacts(contacts.map((x, j) => j === i ? { ...x, canPickup: e.target.checked } : x))} /> pickup
               </label>
+              <button className="col-span-1 pt-2 text-left text-xs text-coral hover:underline" onClick={() => setContacts(contacts.filter((_, j) => j !== i))}>✕</button>
             </div>
           ))}
         </div>
-        <button className="mt-2 text-sm font-medium text-teal" onClick={() => setContacts([...contacts, { name: "", relationship: "", phone: "", canPickup: true }])}>+ Add another contact</button>
+        <button className="mt-2 text-sm font-medium text-teal" onClick={() => setContacts([...contacts, { name: "", relationship: "", phone: "", canPickup: true }])}>+ Add an emergency contact</button>
 
         {error && <p className="mt-4 rounded-lg bg-coral/10 px-3 py-2 text-sm text-coral">{error}</p>}
         <div className="mt-auto flex gap-2 pt-5">

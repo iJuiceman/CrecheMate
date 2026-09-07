@@ -335,12 +335,14 @@ function ChildHeader({ a }: { a: Attendance }) {
       {a.child?.medicalNotes && (
         <p className="mt-1 rounded-md bg-coral/10 px-2 py-1 text-xs font-medium text-coral">⚕ {a.child.medicalNotes}</p>
       )}
+      {/* Parents ARE the emergency contacts; extra contacts follow as "Also". */}
       <p className="mt-1 text-xs text-ink/60">
         Parent: {a.child?.guardian?.name} · {a.child?.guardian?.phone}
+        {a.child?.guardian?.secondName ? ` · ${a.child.guardian.secondName}${a.child.guardian.secondPhone ? ` ${a.child.guardian.secondPhone}` : ""}` : ""}
       </p>
       {a.child?.emergencyContacts?.length ? (
         <p className="mt-0.5 text-xs text-ink/50">
-          Emergency: {a.child.emergencyContacts.map((e) => `${e.name} ${e.phone}${e.canPickup ? "" : " (no pickup)"}`).join(" · ")}
+          Also: {a.child.emergencyContacts.map((e) => `${e.name}${e.relationship ? ` (${e.relationship})` : ""} ${e.phone}${e.canPickup ? "" : " (no pickup)"}`).join(" · ")}
         </p>
       ) : null}
     </div>

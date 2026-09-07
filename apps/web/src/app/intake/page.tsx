@@ -4,6 +4,7 @@ import { useEffect, useState } from "react";
 import { api } from "@/lib/api";
 import { isAuPhone } from "@/lib/phone";
 import SignaturePad from "@/components/SignaturePad";
+import RelationshipSelect from "@/components/RelationshipSelect";
 
 const field =
   "w-full rounded-xl border border-line bg-white px-4 py-3 text-base text-ink placeholder:text-ink/40 focus:border-teal focus:outline-none focus:ring-2 focus:ring-teal/40";
@@ -23,7 +24,9 @@ interface Contact { name: string; relationship: string; phone: string; canPickup
 const emptyForm = () => ({
   guardian: { firstName: "", lastName: "", relationship: "", phone: "", email: "" },
   child: { firstName: "", lastName: "", birthMonth: "", birthYear: "", medicalNotes: "" },
-  contacts: [{ name: "", relationship: "", phone: "", canPickup: true }] as Contact[],
+  // The registering parent is an emergency contact automatically — extra
+  // contacts are optional.
+  contacts: [] as Contact[],
 });
 
 export default function IntakePage() {
@@ -183,7 +186,7 @@ export default function IntakePage() {
         </Section>
 
         {/* Emergency contacts */}
-        <Section title="Emergency contacts" subtitle="People we can call, and who may collect the child">
+        <Section title="Emergency contacts" subtitle="You are your child's emergency contact automatically — add anyone else we can call, and who may collect your child">
           <div className="space-y-4">
             {form.contacts.map((ct, i) => (
               <div key={i} className="rounded-xl border border-line bg-sand/50 p-4">
@@ -192,7 +195,7 @@ export default function IntakePage() {
                     <input className={field} value={ct.name} onChange={(e) => setContact(i, { name: e.target.value })} />
                   </Labeled>
                   <Labeled label="Relationship">
-                    <input className={field} placeholder="e.g. Grandmother" value={ct.relationship} onChange={(e) => setContact(i, { relationship: e.target.value })} />
+                    <RelationshipSelect className={field} value={ct.relationship} onChange={(v) => setContact(i, { relationship: v })} />
                   </Labeled>
                   <Labeled label="Phone" required error={ct.phone.length > 0 && !isAuPhone(ct.phone) ? "Enter a valid Australian number" : undefined}>
                     <input className={field} inputMode="tel" placeholder="0400 123 456" value={ct.phone} onChange={(e) => setContact(i, { phone: e.target.value })} />
@@ -202,12 +205,10 @@ export default function IntakePage() {
                     <span className="text-base text-ink/80">Authorised to collect the child</span>
                   </label>
                 </div>
-                {form.contacts.length > 1 && (
-                  <button type="button" className="mt-3 text-sm font-medium text-ink/50 hover:text-coral" onClick={() => removeContact(i)}>Remove this contact</button>
-                )}
+                <button type="button" className="mt-3 text-sm font-medium text-ink/50 hover:text-coral" onClick={() => removeContact(i)}>Remove this contact</button>
               </div>
             ))}
-            <button type="button" className="btn-secondary" onClick={addContact}>+ Add another contact</button>
+            <button type="button" className="btn-secondary" onClick={addContact}>+ Add an emergency contact</button>
           </div>
         </Section>
 

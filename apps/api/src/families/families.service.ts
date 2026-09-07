@@ -115,7 +115,7 @@ export class FamiliesService {
             birthYear: dto.child.birthYear ?? null,
             medicalNotesEncrypted: dto.child.medicalNotes?.trim() ? encryptField(dto.child.medicalNotes.trim()) : null,
             emergencyContacts: {
-              create: dto.child.emergencyContacts.map((e) => ({
+              create: (dto.child.emergencyContacts ?? []).map((e) => ({
                 name: e.name,
                 relationship: e.relationship,
                 phone: e.phone,
@@ -158,7 +158,7 @@ export class FamiliesService {
         birthYear: dto.birthYear ?? null,
         medicalNotesEncrypted: dto.medicalNotes?.trim() ? encryptField(dto.medicalNotes.trim()) : null,
         emergencyContacts: {
-          create: dto.emergencyContacts.map((e) => ({
+          create: (dto.emergencyContacts ?? []).map((e) => ({
             name: e.name,
             relationship: e.relationship,
             phone: e.phone,

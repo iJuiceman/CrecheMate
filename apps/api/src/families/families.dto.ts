@@ -64,12 +64,13 @@ export class ChildInputDto {
   @MaxLength(2000)
   medicalNotes?: string;
 
-  // At least one emergency contact for a child.
+  // ADDITIONAL emergency contacts. The parents/guardians on the family are
+  // always emergency contacts themselves, so none are required here.
+  @IsOptional()
   @IsArray()
-  @ArrayMinSize(1)
   @ValidateNested({ each: true })
   @Type(() => EmergencyContactDto)
-  emergencyContacts: EmergencyContactDto[];
+  emergencyContacts?: EmergencyContactDto[];
 }
 
 export class GuardianInputDto {
@@ -189,10 +190,10 @@ export class UpdateChildDto {
   @MaxLength(2000)
   medicalNotes?: string;
 
-  // Full replacement of the child's emergency contacts.
+  // Full replacement of the child's ADDITIONAL emergency contacts (parents are
+  // always contacts; an empty array clears the extras).
   @IsOptional()
   @IsArray()
-  @ArrayMinSize(1)
   @ValidateNested({ each: true })
   @Type(() => EmergencyContactDto)
   emergencyContacts?: EmergencyContactDto[];
