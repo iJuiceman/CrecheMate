@@ -86,6 +86,7 @@ function localNow(): string {
 }
 
 function NewIncident({ onClose, onCreated }: { onClose: () => void; onCreated: () => void }) {
+  const [families, setFamilies] = useState<Guardian[]>([]);
   const [children, setChildren] = useState<{ id: string; name: string }[]>([]);
   const [f, setF] = useState({
     childId: "",
@@ -95,17 +96,42 @@ function NewIncident({ onClose, onCreated }: { onClose: () => void; onCreated: (
     types: [] as string[],
     description: "",
   });
+  // Whether the reporter is being typed rather than picked from the child's
+  // known people (also used when no child is selected — nothing to pick from).
+  const [reporterOther, setReporterOther] = useState(false);
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState<string | null>(null);
 
   useEffect(() => {
     api.get<Guardian[]>("/families")
-      .then((fams) => setChildren(
-        fams.flatMap((g) => g.children.filter((c) => c.active).map((c) => ({ id: c.id, name: `${c.firstName} ${c.lastName}` })))
-          .sort((a, b) => a.name.localeCompare(b.name)),
-      ))
+      .then((fams) => {
+        setFamilies(fams);
+        setChildren(
+          fams.flatMap((g) => g.children.filter((c) => c.active).map((c) => ({ id: c.id, name: `${c.firstName} ${c.lastName}` })))
+            .sort((a, b) => a.name.localeCompare(b.name)),
+        );
+      })
       .catch(() => {});
   }, []);
+
+  // The selected child's known people: both parents/guardians plus their
+  // emergency contacts — the pick-list for "who reported it".
+  const knownPeople = (() => {
+    if (!f.childId) return [];
+    const g = families.find((fam) => fam.children.some((c) => c.id === f.childId));
+    if (!g) return [];
+    const child = g.children.find((c) => c.id === f.childId)!;
+    const people: { name: string; hint: string }[] = [
+      { name: `${g.firstName} ${g.lastName}`, hint: g.relationship || "parent" },
+    ];
+    if (g.secondFirstName) {
+      people.push({ name: `${g.secondFirstName} ${g.secondLastName ?? ""}`.trim(), hint: g.secondRelationship || "parent" });
+    }
+    for (const e of child.emergencyContacts ?? []) {
+      if (e.name?.trim()) people.push({ name: e.name, hint: e.relationship || "emergency contact" });
+    }
+    return people;
+  })();
 
   function toggleType(key: string) {
     setF((prev) => ({
@@ -117,7 +143,7 @@ function NewIncident({ onClose, onCreated }: { onClose: () => void; onCreated: (
   async function save() {
     if (f.types.length === 0) return setErr("Tick at least one incident type.");
     if (f.types.includes("other") && !f.description.trim()) return setErr("Describe the incident when “Other” is ticked.");
-    if (f.reportedBy === "parent" && !f.reporterName.trim()) return setErr("Enter the parent's name.");
+    if (f.reportedBy === "parent" && !f.reporterName.trim()) return setErr("Pick or enter who reported it.");
     if (!f.occurredAt) return setErr("Enter when the incident occurred.");
     setBusy(true); setErr(null);
     try {
@@ -143,7 +169,7 @@ function NewIncident({ onClose, onCreated }: { onClose: () => void; onCreated: (
         <div className="space-y-3">
           <div>
             <label className="label">Child involved</label>
-            <select className="field" value={f.childId} onChange={(e) => setF({ ...f, childId: e.target.value })}>
+            <select className="field" value={f.childId} onChange={(e) => { setF({ ...f, childId: e.target.value, reporterName: "" }); setReporterOther(false); }}>
               <option value="">No specific child</option>
               {children.map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}
             </select>
@@ -160,7 +186,29 @@ function NewIncident({ onClose, onCreated }: { onClose: () => void; onCreated: (
             </select>
           </div>
           {f.reportedBy === "parent" && (
-            <input className="field" placeholder="Parent's name" value={f.reporterName} onChange={(e) => setF({ ...f, reporterName: e.target.value })} />
+            <div className="space-y-2">
+              {knownPeople.length > 0 ? (
+                <>
+                  <select
+                    className="field"
+                    value={reporterOther ? "__other" : f.reporterName}
+                    onChange={(e) => {
+                      if (e.target.value === "__other") { setReporterOther(true); setF({ ...f, reporterName: "" }); }
+                      else { setReporterOther(false); setF({ ...f, reporterName: e.target.value }); }
+                    }}
+                  >
+                    <option value="">Who reported it…</option>
+                    {knownPeople.map((p, i) => <option key={i} value={p.name}>{p.name} ({p.hint})</option>)}
+                    <option value="__other">Someone else…</option>
+                  </select>
+                  {reporterOther && (
+                    <input className="field" placeholder="Their name" value={f.reporterName} onChange={(e) => setF({ ...f, reporterName: e.target.value })} autoFocus />
+                  )}
+                </>
+              ) : (
+                <input className="field" placeholder={f.childId ? "Parent's name" : "Parent's name (pick a child above to choose from their contacts)"} value={f.reporterName} onChange={(e) => setF({ ...f, reporterName: e.target.value })} />
+              )}
+            </div>
           )}
           <div>
             <label className="label">What happened</label>
