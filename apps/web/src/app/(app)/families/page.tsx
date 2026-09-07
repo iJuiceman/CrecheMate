@@ -41,7 +41,10 @@ export default function FamiliesPage() {
                     : "No children yet"}
                 </p>
               </div>
-              {g.children.some((c) => c.hasMedicalNotes) && <span className="rounded-full bg-coral/10 px-2 py-0.5 text-xs font-semibold text-coral">⚕ medical</span>}
+              <span className="flex gap-2">
+                {g.children.some((c) => c.hasMedicalNotes) && <span className="rounded-full bg-coral/10 px-2 py-0.5 text-xs font-semibold text-coral">⚕ medical</span>}
+                {!g.waiverSigned && <span className="rounded-full bg-amber-100 px-2 py-0.5 text-xs font-semibold text-amber-800">✍ no waiver</span>}
+              </span>
             </div>
           </Link>
         ))}
@@ -60,6 +63,7 @@ for (let y = nowYear; y >= 2010; y--) BIRTH_YEARS.push(y);
 
 function NewFamily({ onClose, onCreated }: { onClose: () => void; onCreated: () => void }) {
   const [g, setG] = useState({ firstName: "", lastName: "", relationship: "mother", phone: "", email: "", addressLine: "", suburb: "", postcode: "" });
+  const [g2, setG2] = useState({ firstName: "", lastName: "", relationship: "father", phone: "", email: "" });
   const [child, setChild] = useState({ firstName: "", lastName: "", birthMonth: "", birthYear: "", medicalNotes: "" });
   const [contacts, setContacts] = useState<EmergencyContact[]>([{ name: "", relationship: "", phone: "", canPickup: true }]);
   const [busy, setBusy] = useState(false);
@@ -74,7 +78,14 @@ function NewFamily({ onClose, onCreated }: { onClose: () => void; onCreated: () 
     setError(null);
     try {
       await api.post("/families", {
-        guardian: { ...g, lastName: g.lastName, email: g.email || undefined, addressLine: g.addressLine || undefined, suburb: g.suburb || undefined, postcode: g.postcode || undefined, relationship: g.relationship || undefined },
+        guardian: {
+          ...g, lastName: g.lastName, email: g.email || undefined, addressLine: g.addressLine || undefined, suburb: g.suburb || undefined, postcode: g.postcode || undefined, relationship: g.relationship || undefined,
+          secondFirstName: g2.firstName || undefined,
+          secondLastName: g2.lastName || undefined,
+          secondRelationship: g2.firstName ? g2.relationship || undefined : undefined,
+          secondPhone: g2.phone || undefined,
+          secondEmail: g2.email || undefined,
+        },
         child: {
           firstName: child.firstName,
           lastName: child.lastName,
@@ -109,6 +120,17 @@ function NewFamily({ onClose, onCreated }: { onClose: () => void; onCreated: () 
           <input className="field col-span-2" placeholder="Street address (optional)" value={g.addressLine} onChange={(e) => setG({ ...g, addressLine: e.target.value })} />
           <input className="field" placeholder="Suburb" value={g.suburb} onChange={(e) => setG({ ...g, suburb: e.target.value })} />
           <input className="field" placeholder="Postcode" value={g.postcode} onChange={(e) => setG({ ...g, postcode: e.target.value })} />
+        </div>
+
+        <h3 className="mt-5 text-sm font-bold text-ink">Second parent / guardian <span className="font-normal text-ink/40">(optional)</span></h3>
+        <div className="mt-2 grid grid-cols-2 gap-2">
+          <input className="field" placeholder="First name" value={g2.firstName} onChange={(e) => setG2({ ...g2, firstName: e.target.value })} />
+          <input className="field" placeholder="Last name" value={g2.lastName} onChange={(e) => setG2({ ...g2, lastName: e.target.value })} />
+          <select className="field" value={g2.relationship} onChange={(e) => setG2({ ...g2, relationship: e.target.value })}>
+            {["mother", "father", "guardian", "carer"].map((r) => <option key={r} value={r}>{r}</option>)}
+          </select>
+          <input className="field" placeholder="Phone" value={g2.phone} onChange={(e) => setG2({ ...g2, phone: e.target.value })} />
+          <input className="field col-span-2" placeholder="Email (optional)" value={g2.email} onChange={(e) => setG2({ ...g2, email: e.target.value })} />
         </div>
 
         <h3 className="mt-5 text-sm font-bold text-ink">Child</h3>

@@ -6,6 +6,7 @@ import { useRouter } from "next/navigation";
 import { api } from "@/lib/api";
 import { ChildFull, EmergencyContact, Guardian, Settings } from "@/lib/types";
 import CourtInput from "@/components/CourtInput";
+import WaiverSignModal from "@/components/WaiverSignModal";
 
 export default function FamilyDetail({ params }: { params: { id: string } }) {
   const router = useRouter();
@@ -14,11 +15,15 @@ export default function FamilyDetail({ params }: { params: { id: string } }) {
   const [notice, setNotice] = useState<string | null>(null);
   const [editGuardian, setEditGuardian] = useState(false);
   const [addChild, setAddChild] = useState(false);
+  const [currentWaiverVersion, setCurrentWaiverVersion] = useState<number | null>(null);
 
   const load = useCallback(() => {
     api.get<Guardian>(`/families/${params.id}`).then(setFamily).catch((e) => setError(e.message));
   }, [params.id]);
   useEffect(load, [load]);
+  useEffect(() => {
+    api.get<{ waiverVersion: number }>("/intake/info").then((i) => setCurrentWaiverVersion(i.waiverVersion)).catch(() => {});
+  }, []);
 
   if (!family) return <div className="p-6 text-sm text-ink/50">{error ?? "Loading…"}</div>;
 
@@ -40,11 +45,21 @@ export default function FamilyDetail({ params }: { params: { id: string } }) {
         {(family.addressLine || family.suburb) && (
           <p className="text-sm text-ink/60">{[family.addressLine, family.suburb, family.postcode].filter(Boolean).join(", ")}</p>
         )}
+        {family.secondFirstName && (
+          <div className="mt-3 border-t border-line pt-3">
+            <p className="label">Second parent / guardian</p>
+            <p className="text-ink">{family.secondFirstName} {family.secondLastName ?? ""}{family.secondRelationship ? ` · ${family.secondRelationship}` : ""}</p>
+            <p className="text-sm text-ink/70">{[family.secondPhone, family.secondEmail].filter(Boolean).join(" · ") || "No contact details"}</p>
+          </div>
+        )}
         <div className="mt-3 border-t border-line pt-3">
           {family.waiverSigned ? (
             <WaiverStatus family={family} />
           ) : (
-            <p className="text-sm text-ink/50">Waiver: <span className="text-ink/70">not signed</span> (family added by staff)</p>
+            <p className="text-sm text-ink/50">
+              <span className="mr-1 rounded-full bg-amber-100 px-2 py-0.5 text-xs font-semibold text-amber-800">Waiver not accepted</span>
+              The parent will be asked to sign on screen at their first check-in.
+            </p>
           )}
         </div>
       </div>
@@ -56,7 +71,15 @@ export default function FamilyDetail({ params }: { params: { id: string } }) {
       </div>
       <div className="mt-2 space-y-3">
         {family.children.map((c) => (
-          <ChildCard key={c.id} child={c} onChange={load} onNotice={setNotice} onError={setError} />
+          <ChildCard
+            key={c.id}
+            child={c}
+            waiverOk={currentWaiverVersion == null || family.waiverVersion === currentWaiverVersion}
+            parentName={`${family.firstName} ${family.lastName}`}
+            onChange={load}
+            onNotice={setNotice}
+            onError={setError}
+          />
         ))}
       </div>
 
@@ -72,7 +95,9 @@ function WaiverStatus({ family }: { family: Guardian }) {
   return (
     <div>
       <p className="text-sm text-ink/70">
-        <span className="mr-1 rounded-full bg-teal-light px-2 py-0.5 text-xs font-semibold text-teal-dark">Waiver signed</span>
+        <span className="mr-1 rounded-full bg-teal-light px-2 py-0.5 text-xs font-semibold text-teal-dark">
+          {family.waiverMethod === "online" ? "Waiver accepted online" : "Waiver signed"}
+        </span>
         {when}{family.waiverVersion ? ` · v${family.waiverVersion}` : ""}
         {family.waiverSignature && (
           <button className="ml-2 text-xs font-medium text-teal hover:underline" onClick={() => setShow((v) => !v)}>{show ? "Hide" : "View"} signature</button>
@@ -86,16 +111,18 @@ function WaiverStatus({ family }: { family: Guardian }) {
   );
 }
 
-function ChildCard({ child, onChange, onNotice, onError }: { child: ChildFull; onChange: () => void; onNotice: (s: string) => void; onError: (s: string) => void }) {
+function ChildCard({ child, waiverOk, parentName, onChange, onNotice, onError }: { child: ChildFull; waiverOk: boolean; parentName: string; onChange: () => void; onNotice: (s: string) => void; onError: (s: string) => void }) {
   const [edit, setEdit] = useState(false);
   const [book, setBook] = useState(false);
   const [busy, setBusy] = useState(false);
+  const [signWaiver, setSignWaiver] = useState(false);
 
-  async function checkIn() {
+  async function checkIn(waiverSignature?: string) {
     setBusy(true);
     try {
-      await api.post("/attendance/drop-in", { childId: child.id });
+      await api.post("/attendance/drop-in", { childId: child.id, waiverSignature });
       onNotice(`${child.firstName} checked in.`);
+      if (waiverSignature) onChange(); // waiver status just changed — refresh
     } catch (e) {
       onError(e instanceof Error ? e.message : "Couldn't check in.");
     } finally {
@@ -115,13 +142,20 @@ function ChildCard({ child, onChange, onNotice, onError }: { child: ChildFull; o
           ))}
         </div>
         <div className="flex flex-col items-end gap-1">
-          <button className="btn px-3 py-1.5 text-xs" disabled={busy} onClick={checkIn}>Check in now</button>
+          <button className="btn px-3 py-1.5 text-xs" disabled={busy} onClick={() => (waiverOk ? checkIn() : setSignWaiver(true))}>Check in now</button>
           <button className="btn-secondary px-3 py-1.5 text-xs" onClick={() => setBook((v) => !v)}>Book…</button>
           <button className="text-xs font-medium text-teal" onClick={() => setEdit(true)}>Edit</button>
         </div>
       </div>
       {book && <BookForm child={child} onClose={() => setBook(false)} onBooked={() => { setBook(false); onNotice(`Booked ${child.firstName}.`); }} onError={onError} />}
       {edit && <ChildForm child={child} onClose={() => setEdit(false)} onSaved={() => { setEdit(false); onChange(); }} />}
+      {signWaiver && (
+        <WaiverSignModal
+          parentName={parentName}
+          onClose={() => setSignWaiver(false)}
+          onSigned={(sig) => { setSignWaiver(false); checkIn(sig); }}
+        />
+      )}
     </div>
   );
 }
@@ -188,12 +222,23 @@ function GuardianForm({ family, onClose, onSaved }: { family: Guardian; onClose:
     firstName: family.firstName, lastName: family.lastName, relationship: family.relationship ?? "mother",
     phone: family.phone, email: family.email ?? "", addressLine: family.addressLine ?? "", suburb: family.suburb ?? "", postcode: family.postcode ?? "",
   });
+  const [g2, setG2] = useState({
+    firstName: family.secondFirstName ?? "", lastName: family.secondLastName ?? "",
+    relationship: family.secondRelationship ?? "father", phone: family.secondPhone ?? "", email: family.secondEmail ?? "",
+  });
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState<string | null>(null);
   async function save() {
     setBusy(true); setErr(null);
     try {
-      await api.patch(`/families/${family.id}`, { ...g, email: g.email || undefined, addressLine: g.addressLine || undefined, suburb: g.suburb || undefined, postcode: g.postcode || undefined, relationship: g.relationship || undefined });
+      await api.patch(`/families/${family.id}`, {
+        ...g, email: g.email || undefined, addressLine: g.addressLine || undefined, suburb: g.suburb || undefined, postcode: g.postcode || undefined, relationship: g.relationship || undefined,
+        secondFirstName: g2.firstName, // blank = remove the second parent
+        secondLastName: g2.lastName || undefined,
+        secondRelationship: g2.firstName ? g2.relationship || undefined : undefined,
+        secondPhone: g2.firstName && g2.phone ? g2.phone : undefined,
+        secondEmail: g2.firstName && g2.email ? g2.email : undefined,
+      });
       onSaved();
     } catch (e) { setErr(e instanceof Error ? e.message : "Couldn't save."); setBusy(false); }
   }
@@ -208,6 +253,14 @@ function GuardianForm({ family, onClose, onSaved }: { family: Guardian; onClose:
         <input className="field col-span-2" placeholder="Street address" value={g.addressLine} onChange={(e) => setG({ ...g, addressLine: e.target.value })} />
         <input className="field" placeholder="Suburb" value={g.suburb} onChange={(e) => setG({ ...g, suburb: e.target.value })} />
         <input className="field" placeholder="Postcode" value={g.postcode} onChange={(e) => setG({ ...g, postcode: e.target.value })} />
+      </div>
+      <p className="label mt-4">Second parent / guardian (optional — clear the first name to remove)</p>
+      <div className="grid grid-cols-2 gap-2">
+        <input className="field" placeholder="First name" value={g2.firstName} onChange={(e) => setG2({ ...g2, firstName: e.target.value })} />
+        <input className="field" placeholder="Last name" value={g2.lastName} onChange={(e) => setG2({ ...g2, lastName: e.target.value })} />
+        <select className="field" value={g2.relationship} onChange={(e) => setG2({ ...g2, relationship: e.target.value })}>{["mother", "father", "guardian", "carer"].map((r) => <option key={r}>{r}</option>)}</select>
+        <input className="field" placeholder="Phone" value={g2.phone} onChange={(e) => setG2({ ...g2, phone: e.target.value })} />
+        <input className="field col-span-2" placeholder="Email" value={g2.email} onChange={(e) => setG2({ ...g2, email: e.target.value })} />
       </div>
       {err && <p className="mt-3 text-sm text-coral">{err}</p>}
       <FormButtons onClose={onClose} onSave={save} busy={busy} />

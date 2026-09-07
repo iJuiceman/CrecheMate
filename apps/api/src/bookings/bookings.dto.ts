@@ -2,6 +2,7 @@ import { Type } from "class-transformer";
 import {
   ArrayMaxSize,
   ArrayMinSize,
+  Equals,
   IsArray,
   IsBoolean,
   IsInt,
@@ -104,6 +105,12 @@ export class CreateBookingRequestDto {
   @IsString()
   @MaxLength(500)
   notes?: string;
+
+  // Waivers are mandatory: the box has to be ticked to book. Stamped onto the
+  // guardian record when the booking confirms.
+  @IsBoolean()
+  @Equals(true, { message: "You must read and accept the waiver to book" })
+  waiverAccepted: boolean;
 }
 
 export class PayBookingRequestDto {

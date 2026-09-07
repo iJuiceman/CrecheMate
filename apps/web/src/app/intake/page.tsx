@@ -3,7 +3,7 @@
 import { useEffect, useState } from "react";
 import { api } from "@/lib/api";
 import { isAuPhone } from "@/lib/phone";
-import SignaturePad from "./SignaturePad";
+import SignaturePad from "@/components/SignaturePad";
 
 const field =
   "w-full rounded-xl border border-line bg-white px-4 py-3 text-base text-ink placeholder:text-ink/40 focus:border-teal focus:outline-none focus:ring-2 focus:ring-teal/40";

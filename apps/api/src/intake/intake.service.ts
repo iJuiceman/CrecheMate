@@ -65,6 +65,7 @@ export class IntakeService {
         waiverSignatureEncrypted: encryptField(dto.waiverSignature),
         waiverAcceptedAt: new Date(),
         waiverVersion,
+        waiverMethod: "signed",
         children: {
           create: {
             firstName: dto.child.firstName.trim(),

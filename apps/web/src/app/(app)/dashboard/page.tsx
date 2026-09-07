@@ -1,10 +1,12 @@
 "use client";
 
+import Link from "next/link";
 import { useCallback, useEffect, useState } from "react";
 import { api } from "@/lib/api";
-import { Attendance, Dashboard, Guardian, Roster, money } from "@/lib/types";
+import { Attendance, Dashboard, Guardian, Roster, StaffRosterToday, money } from "@/lib/types";
 import StripeCardModal from "@/components/StripeCardModal";
 import CourtInput from "@/components/CourtInput";
+import WaiverSignModal from "@/components/WaiverSignModal";
 
 interface PaymentIntentResponse {
   id: string;
@@ -26,6 +28,7 @@ function fmtTime(iso: string | null): string {
 export default function DashboardPage() {
   const [roster, setRoster] = useState<Roster | null>(null);
   const [stats, setStats] = useState<Dashboard | null>(null);
+  const [staffToday, setStaffToday] = useState<StaffRosterToday | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState<string | null>(null);
   const [showCheckIn, setShowCheckIn] = useState(false);
@@ -34,6 +37,7 @@ export default function DashboardPage() {
     Promise.all([api.get<Roster>("/attendance/roster"), api.get<Dashboard>("/attendance/dashboard")])
       .then(([r, s]) => { setRoster(r); setStats(s); setError(null); })
       .catch((e) => setError(e instanceof Error ? e.message : "Couldn't load the roster."));
+    api.get<StaffRosterToday>("/staff-roster/today").then(setStaffToday).catch(() => {});
   }, []);
 
   useEffect(() => {
@@ -66,6 +70,26 @@ export default function DashboardPage() {
 
       {error && <p className="mb-4 rounded-lg bg-coral/10 px-3 py-2 text-sm text-coral">{error}</p>}
 
+      {/* Who is in charge of the creche right now (from the staff roster). */}
+      {staffToday && (
+        <div className={`mb-4 flex flex-wrap items-center gap-x-3 gap-y-1 rounded-card px-4 py-3 ${staffToday.onNow.length ? "bg-teal-light/60" : "bg-coral/10"}`}>
+          {staffToday.onNow.length ? (
+            <>
+              <span className="text-sm font-semibold text-teal-dark">🎖 In charge: {staffToday.onNow.map((s) => s.user?.name ?? "—").join(" · ")}</span>
+              <span className="text-xs text-ink/50">until {fmtTime(staffToday.onNow[0].endAt)}</span>
+            </>
+          ) : (
+            <span className="text-sm font-semibold text-coral">No one is rostered in the creche right now</span>
+          )}
+          {staffToday.today.length > 0 && (
+            <span className="text-xs text-ink/50">
+              Today: {staffToday.today.map((s) => `${s.user?.name ?? "—"} ${fmtTime(s.startAt)}–${fmtTime(s.endAt)}`).join(" · ")}
+            </span>
+          )}
+          <Link href="/roster" className="ml-auto text-xs font-medium text-teal hover:underline">Roster →</Link>
+        </div>
+      )}
+
       {/* Stats */}
       {stats && (
         <div className="mb-6 grid grid-cols-2 gap-3 sm:grid-cols-4">
@@ -74,6 +98,13 @@ export default function DashboardPage() {
           <Stat label="Finished today" value={String(stats.finishedToday)} sub="collected" />
           <Stat label="Outstanding" value={money(stats.outstandingCents)} sub={`${stats.outstandingCount} unpaid`} warn={stats.outstandingCount > 0} />
         </div>
+      )}
+
+      {/* Day timeline — every child expected/here/finished today at a glance. */}
+      {roster && (roster.inCare.length + roster.expected.length + roster.finished.length) > 0 && (
+        <Section title="Today at a glance" count={roster.inCare.length + roster.expected.length + roster.finished.length}>
+          <TodayTimeline roster={roster} />
+        </Section>
       )}
 
       {/* In care now */}
@@ -94,7 +125,7 @@ export default function DashboardPage() {
         <Section title="Expected today" count={roster.expected.length}>
           <div className="grid gap-3 md:grid-cols-2">
             {roster.expected.map((a) => (
-              <ExpectedCard key={a.id} a={a} courts={roster.courts} busy={busy} act={act} />
+              <ExpectedCard key={a.id} a={a} courts={roster.courts} waiverVersion={roster.waiverVersion} busy={busy} act={act} />
             ))}
           </div>
         </Section>
@@ -123,7 +154,7 @@ export default function DashboardPage() {
         </Section>
       )}
 
-      {showCheckIn && <CheckInModal courts={roster?.courts ?? []} onClose={() => setShowCheckIn(false)} onDone={() => { setShowCheckIn(false); load(); }} />}
+      {showCheckIn && <CheckInModal courts={roster?.courts ?? []} waiverVersion={roster?.waiverVersion ?? 1} onClose={() => setShowCheckIn(false)} onDone={() => { setShowCheckIn(false); load(); }} />}
     </div>
   );
 }
@@ -178,20 +209,116 @@ function InCareCard({ a, courts, rate, busy, act }: { a: Attendance; courts: str
   );
 }
 
-function ExpectedCard({ a, courts, busy, act }: { a: Attendance; courts: string[]; busy: string | null; act: Act }) {
+function ExpectedCard({ a, courts, waiverVersion, busy, act }: { a: Attendance; courts: string[]; waiverVersion: number; busy: string | null; act: Act }) {
   const [court, setCourt] = useState(a.court ?? "");
+  const [signWaiver, setSignWaiver] = useState(false);
   const disabled = busy === a.id;
+  // Waivers are mandatory: a stale/missing acceptance means the parent signs
+  // on screen before this check-in goes through.
+  const waiverOk = a.child?.guardian?.waiverVersion === waiverVersion;
+
+  function checkIn(waiverSignature?: string) {
+    return act(a.id, () => api.post(`/attendance/${a.id}/check-in`, { court: court.trim() || undefined, waiverSignature }));
+  }
+
   return (
     <div className="card">
       <ChildHeader a={a} />
       <p className="mt-2 text-sm text-ink/60">Booked {fmtTime(a.scheduledStart)} – {fmtTime(a.scheduledEnd)}</p>
+      {!waiverOk && (
+        <p className="mt-2 rounded-md bg-amber-100 px-2 py-1 text-xs font-medium text-amber-800">✍ Waiver signature needed at check-in</p>
+      )}
       <div className="mt-2">
         <label className="label">Court (where the parent will be)</label>
         <CourtInput value={court} onChange={setCourt} courts={courts} className="field py-1.5 text-sm" />
       </div>
       <div className="mt-3 flex gap-2">
-        <button className="btn flex-1" disabled={disabled} onClick={() => act(a.id, () => api.post(`/attendance/${a.id}/check-in`, { court: court.trim() || undefined }))}>Check in</button>
+        <button className="btn flex-1" disabled={disabled} onClick={() => (waiverOk ? checkIn() : setSignWaiver(true))}>Check in</button>
         <button className="btn-secondary" disabled={disabled} onClick={() => act(a.id, () => api.post(`/attendance/${a.id}/cancel`, {}))}>Cancel</button>
+      </div>
+      {signWaiver && (
+        <WaiverSignModal
+          parentName={a.child?.guardian?.name ?? "The parent"}
+          onClose={() => setSignWaiver(false)}
+          onSigned={(sig) => { setSignWaiver(false); checkIn(sig); }}
+        />
+      )}
+    </div>
+  );
+}
+
+/** Horizontal day timeline: one bar per child, open→close axis, "now" line.
+ * Booked = outline, in care = solid teal, finished = grey. */
+function TodayTimeline({ roster }: { roster: Roster }) {
+  const [openH, openM] = roster.openTime.split(":").map(Number);
+  const [closeH, closeM] = roster.closeTime.split(":").map(Number);
+  const dayStart = new Date(); dayStart.setHours(openH || 7, openM || 0, 0, 0);
+  const dayEnd = new Date(); dayEnd.setHours(closeH || 18, closeM || 0, 0, 0);
+  const span = Math.max(1, dayEnd.getTime() - dayStart.getTime());
+  const pct = (iso: string | null, fallback: Date) => {
+    const t = iso ? new Date(iso).getTime() : fallback.getTime();
+    return Math.min(100, Math.max(0, ((t - dayStart.getTime()) / span) * 100));
+  };
+  const now = new Date();
+  const nowPct = ((now.getTime() - dayStart.getTime()) / span) * 100;
+
+  const rows = [...roster.inCare, ...roster.expected, ...roster.finished]
+    .map((a) => {
+      const from = a.checkInAt ?? a.scheduledStart;
+      const to = a.checkOutAt ?? a.scheduledEnd;
+      return { a, left: pct(from, dayStart), right: pct(to, a.status === "checked_in" ? now : dayEnd) };
+    })
+    .sort((x, y) => x.left - y.left);
+
+  const hours: number[] = [];
+  for (let h = Math.ceil(openH + (openM ? 1 : 0)); h <= closeH; h++) hours.push(h);
+  const hourLabel = (h: number) => `${((h + 11) % 12) + 1}${h < 12 ? "am" : "pm"}`;
+
+  return (
+    <div className="card overflow-x-auto">
+      <div className="relative min-w-[560px]">
+        {/* Hour ruler */}
+        <div className="relative mb-1 h-4 text-[10px] text-ink/40">
+          {hours.map((h) => {
+            const p = ((new Date(dayStart).setHours(h, 0, 0, 0) - dayStart.getTime()) / span) * 100;
+            return p >= 0 && p <= 100 ? <span key={h} className="absolute -translate-x-1/2" style={{ left: `${p}%` }}>{hourLabel(h)}</span> : null;
+          })}
+        </div>
+        <div className="relative space-y-1">
+          {/* Hour gridlines + now line */}
+          <div className="pointer-events-none absolute inset-0">
+            {hours.map((h) => {
+              const p = ((new Date(dayStart).setHours(h, 0, 0, 0) - dayStart.getTime()) / span) * 100;
+              return p >= 0 && p <= 100 ? <div key={h} className="absolute bottom-0 top-0 border-l border-line/60" style={{ left: `${p}%` }} /> : null;
+            })}
+            {nowPct >= 0 && nowPct <= 100 && <div className="absolute bottom-0 top-0 z-10 border-l-2 border-coral" style={{ left: `${nowPct}%` }} />}
+          </div>
+          {rows.map(({ a, left, right }) => {
+            const w = Math.max(3, right - left);
+            const styleByStatus =
+              a.status === "checked_in" ? "bg-teal text-white"
+              : a.status === "booked" ? "border border-teal bg-teal-light/40 text-teal-dark"
+              : "bg-line text-ink/50";
+            return (
+              <div key={a.id} className="relative h-6">
+                <div
+                  className={`absolute flex h-6 items-center gap-1 overflow-hidden whitespace-nowrap rounded-md px-2 text-[11px] font-medium ${styleByStatus}`}
+                  style={{ left: `${left}%`, width: `${w}%`, minWidth: "3.5rem" }}
+                  title={`${a.child?.name ?? ""} · ${fmtTime(a.checkInAt ?? a.scheduledStart)}–${fmtTime(a.checkOutAt ?? a.scheduledEnd)}${a.court ? ` · ${a.court}` : ""}`}
+                >
+                  {a.child?.name}
+                  {a.status === "checked_in" && a.court ? <span className="opacity-75">· {a.court}</span> : null}
+                </div>
+              </div>
+            );
+          })}
+        </div>
+        <p className="mt-2 text-[11px] text-ink/40">
+          <span className="mr-3"><span className="mr-1 inline-block h-2 w-4 rounded-sm border border-teal bg-teal-light/40 align-middle" />booked</span>
+          <span className="mr-3"><span className="mr-1 inline-block h-2 w-4 rounded-sm bg-teal align-middle" />in care</span>
+          <span className="mr-3"><span className="mr-1 inline-block h-2 w-4 rounded-sm bg-line align-middle" />finished</span>
+          <span><span className="mr-1 inline-block h-2 w-0.5 bg-coral align-middle" />now</span>
+        </p>
       </div>
     </div>
   );
@@ -293,12 +420,14 @@ function PaymentRow({ attendanceId, feeCents, busyKey, onDone, onBusy }: { atten
   );
 }
 
-function CheckInModal({ courts, onClose, onDone }: { courts: string[]; onClose: () => void; onDone: () => void }) {
+function CheckInModal({ courts, waiverVersion, onClose, onDone }: { courts: string[]; waiverVersion: number; onClose: () => void; onDone: () => void }) {
   const [q, setQ] = useState("");
   const [results, setResults] = useState<Guardian[]>([]);
   const [busy, setBusy] = useState<string | null>(null);
   const [err, setErr] = useState<string | null>(null);
   const [court, setCourt] = useState("");
+  // Set when the mandatory waiver still needs signing for the chosen child.
+  const [signFor, setSignFor] = useState<{ childId: string; parentName: string } | null>(null);
 
   useEffect(() => {
     const t = setTimeout(() => {
@@ -307,11 +436,11 @@ function CheckInModal({ courts, onClose, onDone }: { courts: string[]; onClose: 
     return () => clearTimeout(t);
   }, [q]);
 
-  async function checkIn(childId: string) {
+  async function checkIn(childId: string, waiverSignature?: string) {
     setBusy(childId);
     setErr(null);
     try {
-      await api.post("/attendance/drop-in", { childId, court: court.trim() || undefined });
+      await api.post("/attendance/drop-in", { childId, court: court.trim() || undefined, waiverSignature });
       onDone();
     } catch (e) {
       setErr(e instanceof Error ? e.message : "Couldn't check in.");
@@ -330,20 +459,41 @@ function CheckInModal({ courts, onClose, onDone }: { courts: string[]; onClose: 
         <input autoFocus className="field mt-3" placeholder="Search by child or parent name / phone…" value={q} onChange={(e) => setQ(e.target.value)} />
         {err && <p className="mt-2 text-sm text-coral">{err}</p>}
         <div className="mt-3 max-h-72 space-y-2 overflow-y-auto">
-          {results.flatMap((g) => g.children.map((c) => (
-            <div key={c.id} className="flex items-center justify-between rounded-lg border border-line px-3 py-2">
-              <div>
-                <p className="text-sm font-medium text-ink">{c.firstName} {c.lastName}{c.age != null ? ` · age ${c.age}` : ""}</p>
-                <p className="text-xs text-ink/50">{g.firstName} {g.lastName} · {g.phone}</p>
-                {c.medicalNotes && <p className="text-xs text-coral">⚕ {c.medicalNotes}</p>}
+          {results.flatMap((g) => g.children.map((c) => {
+            const waiverOk = g.waiverVersion === waiverVersion;
+            return (
+              <div key={c.id} className="flex items-center justify-between rounded-lg border border-line px-3 py-2">
+                <div>
+                  <p className="text-sm font-medium text-ink">{c.firstName} {c.lastName}{c.age != null ? ` · age ${c.age}` : ""}</p>
+                  <p className="text-xs text-ink/50">{g.firstName} {g.lastName} · {g.phone}</p>
+                  {c.medicalNotes && <p className="text-xs text-coral">⚕ {c.medicalNotes}</p>}
+                  {!waiverOk && <p className="text-xs font-medium text-amber-700">✍ Waiver signature needed</p>}
+                </div>
+                <button
+                  className="btn px-3 py-1.5 text-xs"
+                  disabled={busy === c.id}
+                  onClick={() => (waiverOk ? checkIn(c.id) : setSignFor({ childId: c.id, parentName: `${g.firstName} ${g.lastName}` }))}
+                >
+                  Check in
+                </button>
               </div>
-              <button className="btn px-3 py-1.5 text-xs" disabled={busy === c.id} onClick={() => checkIn(c.id)}>Check in</button>
-            </div>
-          )))}
+            );
+          }))}
           {results.length === 0 && <p className="py-6 text-center text-sm text-ink/40">No matches. Add the family under “Families &amp; children”.</p>}
         </div>
         <button className="btn-secondary mt-4 w-full" onClick={onClose}>Close</button>
       </div>
+      {signFor && (
+        // stopPropagation so a click on the sign-modal backdrop doesn't also
+        // fall through to this modal's backdrop and close both.
+        <div onClick={(e) => e.stopPropagation()}>
+          <WaiverSignModal
+            parentName={signFor.parentName}
+            onClose={() => setSignFor(null)}
+            onSigned={(sig) => { const { childId } = signFor; setSignFor(null); checkIn(childId, sig); }}
+          />
+        </div>
+      )}
     </div>
   );
 }

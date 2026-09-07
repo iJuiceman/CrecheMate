@@ -3,7 +3,7 @@ import { DateTime } from "luxon";
 import { PrismaService } from "../prisma/prisma.service";
 import { SettingsService } from "../settings/settings.service";
 import { PaymentsService } from "../payments/payments.service";
-import { decryptField } from "../common/encryption.util";
+import { decryptField, encryptField } from "../common/encryption.util";
 import { computeAge } from "../common/age.util";
 import { JwtPayload } from "../auth/jwt-payload.interface";
 import { BookAttendanceDto, CheckOutDto, DropInDto, TakePaymentDto } from "./attendance.dto";
@@ -49,6 +49,12 @@ export class AttendanceService {
             name: `${child.guardian.firstName} ${child.guardian.lastName}`,
             phone: child.guardian.phone,
             relationship: child.guardian.relationship,
+            // Second parent shown alongside the primary on the roster cards.
+            secondName: child.guardian.secondFirstName ? `${child.guardian.secondFirstName} ${child.guardian.secondLastName ?? ""}`.trim() : null,
+            secondPhone: child.guardian.secondPhone ?? null,
+            // Compared against the facility's current version on the client to
+            // surface "waiver required" BEFORE the check-in attempt.
+            waiverVersion: child.guardian.waiverVersion ?? null,
           }
         : null,
       emergencyContacts: (child.emergencyContacts ?? []).map((e: any) => ({
@@ -96,6 +102,34 @@ export class AttendanceService {
     }
   }
 
+  /** Waivers are mandatory before care starts. If the child's guardian hasn't
+   * accepted the CURRENT waiver, an on-screen signature supplied with the
+   * check-in stamps it; without one the check-in is refused so the desk knows
+   * to collect a signature. */
+  private async assertWaiverForCheckIn(childId: string, signature?: string) {
+    const f = await this.facility();
+    const current = f.waiverVersion ?? 1;
+    const child = await this.prisma.child.findUnique({ where: { id: childId }, include: { guardian: true } });
+    if (!child) throw new NotFoundException("Child not found");
+    if (child.guardian.waiverVersion === current) return;
+    if (!signature) {
+      throw new ConflictException(
+        child.guardian.waiverAcceptedAt
+          ? "The waiver has been updated since this parent accepted it — please have them sign the current waiver on screen."
+          : "This parent hasn't signed the waiver — please have them sign it on screen before checking in.",
+      );
+    }
+    await this.prisma.guardian.update({
+      where: { id: child.guardianId },
+      data: {
+        waiverSignatureEncrypted: encryptField(signature),
+        waiverAcceptedAt: new Date(),
+        waiverVersion: current,
+        waiverMethod: "signed",
+      },
+    });
+  }
+
   async roster() {
     const f = await this.facility();
     const { start, end } = this.dayBounds(f.timezone);
@@ -116,6 +150,10 @@ export class AttendanceService {
       inCareCount: inCare.length,
       hourlyRateCents: f.hourlyRateCents,
       courts: f.courts,
+      // For the day-timeline view and the mandatory-waiver check-in gate.
+      openTime: f.openTime,
+      closeTime: f.closeTime,
+      waiverVersion: f.waiverVersion ?? 1,
       inCare,
       expected: all.filter((a) => a.status === "booked"),
       finished: all.filter((a) => a.status === "checked_out" || a.status === "no_show"),
@@ -282,6 +320,7 @@ export class AttendanceService {
     const f = await this.facility();
     await this.loadChild(dto.childId);
     await this.assertCapacityForCheckIn();
+    await this.assertWaiverForCheckIn(dto.childId, dto.waiverSignature);
     const now = new Date();
     const { date } = this.dayBounds(f.timezone);
     const created = await this.prisma.attendance.create({
@@ -300,11 +339,12 @@ export class AttendanceService {
   }
 
   /** Check in an existing booking on arrival (optionally recording the court). */
-  async checkIn(actor: JwtPayload, id: string, court?: string) {
+  async checkIn(actor: JwtPayload, id: string, court?: string, waiverSignature?: string) {
     const a = await this.prisma.attendance.findUnique({ where: { id } });
     if (!a) throw new NotFoundException("Attendance not found");
     if (a.status !== "booked") throw new BadRequestException("This booking can't be checked in");
     await this.assertCapacityForCheckIn();
+    await this.assertWaiverForCheckIn(a.childId, waiverSignature);
     const updated = await this.prisma.attendance.update({
       where: { id },
       data: {

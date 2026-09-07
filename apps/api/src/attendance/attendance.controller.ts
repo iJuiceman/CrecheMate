@@ -44,7 +44,7 @@ export class AttendanceController {
 
   @Post(":id/check-in")
   checkIn(@Param("id") id: string, @Body() dto: CheckInDto, @Req() req: Request) {
-    return this.attendance.checkIn(actor(req), id, dto.court);
+    return this.attendance.checkIn(actor(req), id, dto.court, dto.waiverSignature);
   }
 
   @Post(":id/court")

@@ -1,4 +1,4 @@
-import { IsIn, IsISO8601, IsOptional, IsString, IsUUID, MaxLength, MinLength } from "class-validator";
+import { IsIn, IsISO8601, IsOptional, IsString, IsUUID, Matches, MaxLength, MinLength } from "class-validator";
 
 export class BookAttendanceDto {
   @IsUUID()
@@ -37,6 +37,15 @@ export class DropInDto {
   @IsString()
   @MaxLength(60)
   court?: string;
+
+  // Waivers are mandatory: when the guardian hasn't accepted the current
+  // waiver, the parent signs on screen at the desk and the PNG comes through
+  // here (same shape/cap as the kiosk intake signature).
+  @IsOptional()
+  @IsString()
+  @Matches(/^data:image\/png;base64,[A-Za-z0-9+/=]+$/, { message: "Invalid signature" })
+  @MaxLength(500_000)
+  waiverSignature?: string;
 }
 
 export class CheckInDto {
@@ -44,6 +53,12 @@ export class CheckInDto {
   @IsString()
   @MaxLength(60)
   court?: string;
+
+  @IsOptional()
+  @IsString()
+  @Matches(/^data:image\/png;base64,[A-Za-z0-9+/=]+$/, { message: "Invalid signature" })
+  @MaxLength(500_000)
+  waiverSignature?: string;
 }
 
 export class SetCourtDto {

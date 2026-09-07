@@ -4,6 +4,7 @@ import { PrismaService } from "../prisma/prisma.service";
 import { SettingsService } from "../settings/settings.service";
 import { PaymentsService } from "../payments/payments.service";
 import { AttendanceService } from "../attendance/attendance.service";
+import { DEFAULT_WAIVER } from "../intake/intake.service";
 import { computeAge } from "../common/age.util";
 import { JwtPayload } from "../auth/jwt-payload.interface";
 import { CreateBookingRequestDto } from "./bookings.dto";
@@ -44,6 +45,9 @@ export class BookingsService {
       maxBookingHours: f.maxBookingHours,
       maxDaysAhead: 120,
       courts: f.courts,
+      // Mandatory waiver — shown on the form with a required acknowledgement.
+      waiverText: f.waiverText?.trim() ? f.waiverText : DEFAULT_WAIVER,
+      waiverVersion: f.waiverVersion ?? 1,
     };
   }
 
@@ -154,6 +158,9 @@ export class BookingsService {
         courtBookingName: null,
         feeCents: total,
         notes: dto.notes?.trim() || null,
+        // The ticked waiver acknowledgement (DTO enforces it's true).
+        waiverAcceptedAt: new Date(),
+        waiverVersion: f.waiverVersion ?? 1,
         children: {
           create: dto.children.map((c) => ({
             firstName: c.firstName.trim(),
@@ -189,7 +196,7 @@ export class BookingsService {
     parentPhone: string;
     parentEmail: string | null;
     children: { firstName: string; lastName: string; birthMonth: number | null; birthYear: number | null }[];
-  }): Promise<string[]> {
+  }): Promise<{ guardianId: string; childIds: string[] }> {
     const wanted = canonicalPhone(request.parentPhone);
     const all = await this.prisma.guardian.findMany({ include: { children: true } });
     let guardian = all.find((g) => canonicalPhone(g.phone) === wanted) ?? null;
@@ -217,7 +224,7 @@ export class BookingsService {
       roster.push(child); // so a repeated name in the same booking isn't created twice
       ids.push(child.id);
     }
-    return ids;
+    return { guardianId: guardian.id, childIds: ids };
   }
 
   /** Public: the parent has confirmed the card and been CHARGED. Verify the
@@ -249,7 +256,23 @@ export class BookingsService {
 
     try {
       const paidAt = new Date();
-      const childIds = await this.resolveFamily(request);
+      const { guardianId, childIds } = await this.resolveFamily(request);
+      // Carry the ticked waiver acknowledgement onto the guardian — but never
+      // downgrade a current finger signature to an online tick.
+      const g = await this.prisma.guardian.findUnique({ where: { id: guardianId } });
+      const current = f.waiverVersion ?? 1;
+      if (g && g.waiverVersion !== current) {
+        await this.prisma.guardian.update({
+          where: { id: guardianId },
+          data: {
+            waiverAcceptedAt: request.waiverAcceptedAt ?? paidAt,
+            waiverVersion: request.waiverVersion ?? current,
+            waiverMethod: "online",
+            // Any old-version signature stays stored, but the acceptance on
+            // record is now the online acknowledgement of the current text.
+          },
+        });
+      }
       // Capacity check + all N attendance rows + their request-child links happen
       // in ONE serializable transaction, so concurrent auto-confirm bookings can't
       // oversell the child:staff ratio, and a link failure rolls the whole thing

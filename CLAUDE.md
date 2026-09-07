@@ -237,6 +237,38 @@ New Prisma models: add a migration; the API container runs
   `serviceDate` (stored at facility-tz midnight). Child birth month/year are
   dropdowns everywhere (booking, intake, and the staff family add + edit forms).
 
+- **Mandatory waivers** (2026-09-06): a child cannot start care until their
+  guardian has accepted the CURRENT waiver version. Enforced server-side in
+  `attendance.assertWaiverForCheckIn` on BOTH check-in paths (booked check-in +
+  drop-in): a stale/missing acceptance is a 409 unless a `waiverSignature` PNG
+  (same shape/cap as intake) rides along, which stamps the guardian
+  (encrypted signature, `waiverAcceptedAt`, current `waiverVersion`,
+  `waiverMethod: "signed"`). The web knows beforehand — the roster payload
+  carries the current `waiverVersion` and each child card its guardian's — and
+  opens `components/WaiverSignModal.tsx` (waiver text + `SignaturePad`, moved
+  to components) to collect the finger signature at the desk. Online bookings
+  require a ticked acknowledgement (`waiverAccepted` `@Equals(true)`,
+  waiver text served from `GET /bookings/config`); the tick is stamped on the
+  `BookingRequest` and carried onto the resolved guardian at `payRequest`
+  (`waiverMethod: "online"`) — but never downgrades a current signature.
+  `waiverSignature` is already in the audit REDACT_KEYS.
+- **Second parent/guardian** (2026-09-06): optional `second*` columns on
+  Guardian (name/relationship/phone/email), editable on the staff family
+  add/edit forms, shown on the family profile and on roster child cards.
+  Blank second first name on PATCH clears the whole second parent.
+- **Staff roster / who's in charge** (2026-09-06): `RosterShift` model +
+  `roster` module at `/staff-roster` — view for all staff (`GET ?from&to`,
+  `GET /today` → `{ onNow, today }`), schedule/edit/delete admin-only, with
+  end-after-start, ≤24h, active-user and same-user-overlap guards (different
+  staff MAY overlap). Web `(app)/roster` is a week grid (prev/this/next) with
+  admin add/edit/remove; the dashboard shows an "In charge" banner (current
+  operator(s) from `/staff-roster/today`, coral warning when no one is
+  rostered) linking to the roster page. Nav: "Creche roster" (all staff).
+- **Today-at-a-glance timeline** (2026-09-06): dashboard `TodayTimeline` —
+  horizontal per-child bars (booked = outline, in care = solid teal, finished
+  = grey) across the open→close axis with hour gridlines + a "now" line;
+  roster payload now includes `openTime`/`closeTime`.
+
 ## Not yet built (backlog)
 
 - Receipts/PDF, reporting/exports, daily attendance sheet.

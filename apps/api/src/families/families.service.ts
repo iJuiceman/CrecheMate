@@ -49,7 +49,13 @@ export class FamiliesService {
       waiverSigned: !!g.waiverAcceptedAt,
       waiverAcceptedAt: g.waiverAcceptedAt ?? null,
       waiverVersion: g.waiverVersion ?? null,
+      waiverMethod: g.waiverMethod ?? null,
       waiverSignature: includeDetail && g.waiverSignatureEncrypted ? decryptField(g.waiverSignatureEncrypted) : null,
+      secondFirstName: g.secondFirstName ?? null,
+      secondLastName: g.secondLastName ?? null,
+      secondRelationship: g.secondRelationship ?? null,
+      secondPhone: g.secondPhone ?? null,
+      secondEmail: g.secondEmail ?? null,
       children: (g.children ?? []).map((c: any) => this.serializeChild(c, includeDetail)),
     };
   }
@@ -96,6 +102,11 @@ export class FamiliesService {
         suburb: dto.guardian.suburb,
         postcode: dto.guardian.postcode,
         notes: dto.guardian.notes,
+        secondFirstName: dto.guardian.secondFirstName,
+        secondLastName: dto.guardian.secondLastName,
+        secondRelationship: dto.guardian.secondRelationship,
+        secondPhone: dto.guardian.secondPhone,
+        secondEmail: dto.guardian.secondEmail,
         children: {
           create: {
             firstName: dto.child.firstName,
@@ -122,7 +133,16 @@ export class FamiliesService {
   async updateGuardian(id: string, dto: UpdateGuardianDto) {
     const g = await this.prisma.guardian.findUnique({ where: { id } });
     if (!g) throw new NotFoundException("Family not found");
-    await this.prisma.guardian.update({ where: { id }, data: { ...dto } });
+    const data: Record<string, unknown> = { ...dto };
+    // A blank second-parent first name removes the whole second parent.
+    if (dto.secondFirstName !== undefined && !dto.secondFirstName.trim()) {
+      data.secondFirstName = null;
+      data.secondLastName = null;
+      data.secondRelationship = null;
+      data.secondPhone = null;
+      data.secondEmail = null;
+    }
+    await this.prisma.guardian.update({ where: { id }, data });
     return this.get(id);
   }
 

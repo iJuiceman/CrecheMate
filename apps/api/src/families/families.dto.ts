@@ -116,6 +116,32 @@ export class GuardianInputDto {
   @IsString()
   @MaxLength(1000)
   notes?: string;
+
+  // Optional second parent / guardian on the family profile.
+  @IsOptional()
+  @IsString()
+  @MaxLength(80)
+  secondFirstName?: string;
+
+  @IsOptional()
+  @IsString()
+  @MaxLength(80)
+  secondLastName?: string;
+
+  @IsOptional()
+  @IsString()
+  @MaxLength(60)
+  secondRelationship?: string;
+
+  @IsOptional()
+  @IsString()
+  @MaxLength(40)
+  @IsAuPhone()
+  secondPhone?: string;
+
+  @IsOptional()
+  @IsEmail()
+  secondEmail?: string;
 }
 
 // Create a whole family in one step: the guardian + their first child.

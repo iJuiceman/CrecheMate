@@ -10,6 +10,7 @@ const NAV = [
   { href: "/dashboard", label: "Today's roster", icon: "🏠" },
   { href: "/families", label: "Families & children", icon: "👪" },
   { href: "/attendance", label: "Bookings", icon: "📅" },
+  { href: "/roster", label: "Creche roster", icon: "🗓️" },
   { href: "/incidents", label: "Incidents", icon: "🩹" },
 ];
 const ADMIN_NAV = [

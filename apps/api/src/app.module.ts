@@ -14,6 +14,7 @@ import { IntakeModule } from "./intake/intake.module";
 import { BookingsModule } from "./bookings/bookings.module";
 import { ReportsModule } from "./reports/reports.module";
 import { IncidentsModule } from "./incidents/incidents.module";
+import { RosterModule } from "./roster/roster.module";
 import { FinanceModule } from "./finance/finance.module";
 import { AuditModule } from "./audit/audit.module";
 import { EncryptionHealthService } from "./common/encryption-health.service";
@@ -38,6 +39,7 @@ import { EncryptionHealthService } from "./common/encryption-health.service";
     BookingsModule,
     ReportsModule,
     IncidentsModule,
+    RosterModule,
     FinanceModule,
     AuditModule,
   ],

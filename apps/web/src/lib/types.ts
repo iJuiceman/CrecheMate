@@ -33,7 +33,13 @@ export interface Guardian {
   waiverSigned: boolean;
   waiverAcceptedAt: string | null;
   waiverVersion: number | null;
+  waiverMethod: "signed" | "online" | null;
   waiverSignature: string | null; // decrypted, detail view only
+  secondFirstName: string | null;
+  secondLastName: string | null;
+  secondRelationship: string | null;
+  secondPhone: string | null;
+  secondEmail: string | null;
   children: ChildFull[];
 }
 
@@ -60,7 +66,7 @@ export interface Attendance {
     name: string;
     age: number | null;
     medicalNotes: string | null;
-    guardian: { name: string; phone: string; relationship: string | null } | null;
+    guardian: { name: string; phone: string; relationship: string | null; secondName: string | null; secondPhone: string | null; waiverVersion: number | null } | null;
     emergencyContacts: { name: string; phone: string; relationship: string | null; canPickup: boolean }[];
   } | null;
 }
@@ -70,9 +76,33 @@ export interface Roster {
   inCareCount: number;
   hourlyRateCents: number;
   courts: string[];
+  openTime: string;
+  closeTime: string;
+  waiverVersion: number;
   inCare: Attendance[];
   expected: Attendance[];
   finished: Attendance[];
+}
+
+// ── Staff roster (creche operator shifts) ──
+export interface RosterShift {
+  id: string;
+  userId: string;
+  startAt: string;
+  endAt: string;
+  notes: string | null;
+  user: { id: string; name: string; role: string } | null;
+}
+export interface StaffRosterWeek {
+  from: string;
+  to: string;
+  timezone: string;
+  shifts: RosterShift[];
+}
+export interface StaffRosterToday {
+  now: string;
+  onNow: RosterShift[];
+  today: RosterShift[];
 }
 
 export interface Dashboard {
@@ -159,6 +189,8 @@ export interface BookingConfig {
   maxBookingHours: number;
   maxDaysAhead: number;
   courts: string[];
+  waiverText: string;
+  waiverVersion: number;
 }
 
 export interface BookingRequestRow {

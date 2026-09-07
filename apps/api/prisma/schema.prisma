@@ -30,7 +30,29 @@ model User {
   lastLoginAt  DateTime?  @map("last_login_at")
   createdAt    DateTime   @default(now()) @map("created_at")
 
+  rosterShifts RosterShift[]
+
   @@map("users")
+}
+
+// ── Staff roster ────────────────────────────────────────────────────────
+// Who is scheduled to run the creche (the operator "in charge") and when.
+// Overlapping shifts are allowed for DIFFERENT staff (two on together), but a
+// staff member can't be rostered twice over the same window.
+model RosterShift {
+  id          String   @id @default(uuid())
+  userId      String   @map("user_id")
+  startAt     DateTime @map("start_at")
+  endAt       DateTime @map("end_at")
+  notes       String?
+  createdById String?  @map("created_by_id")
+  createdAt   DateTime @default(now()) @map("created_at")
+
+  user User @relation(fields: [userId], references: [id])
+
+  @@index([startAt])
+  @@index([userId])
+  @@map("roster_shifts")
 }
 
 // ── Families ────────────────────────────────────────────────────────────
@@ -47,12 +69,21 @@ model Guardian {
   suburb       String?
   postcode     String?
   notes        String?
-  // Waiver acceptance captured at parent self-registration. The signature image
+  // Waiver acceptance — MANDATORY before a child is checked in. Captured as a
+  // finger signature (kiosk registration or on-screen at check-in) or as a
+  // ticked acknowledgement on the online booking form. The signature image
   // (a data URL) is personal data, so it's encrypted at the app layer like
-  // medical notes. Null when a family was added by staff without a signature.
+  // medical notes. waiverMethod records how it was accepted.
   waiverSignatureEncrypted String?   @map("waiver_signature_encrypted")
   waiverAcceptedAt         DateTime? @map("waiver_accepted_at")
   waiverVersion            Int?      @map("waiver_version")
+  waiverMethod             String?   @map("waiver_method") // "signed" | "online"
+  // Optional second parent / guardian on the family profile.
+  secondFirstName    String? @map("second_first_name")
+  secondLastName     String? @map("second_last_name")
+  secondRelationship String? @map("second_relationship")
+  secondPhone        String? @map("second_phone")
+  secondEmail        String? @map("second_email")
   createdAt    DateTime @default(now()) @map("created_at")
 
   children Child[]
@@ -199,6 +230,11 @@ model BookingRequest {
   notes           String?
 
   status BookingRequestStatus @default(pending)
+
+  // Waiver acknowledgement ticked on the online form (mandatory to book) —
+  // stamped onto the resolved guardian when the booking confirms.
+  waiverAcceptedAt DateTime? @map("waiver_accepted_at")
+  waiverVersion    Int?      @map("waiver_version")
 
   // Prepayment (mirrors the attendance payment fields).
   paymentStatus         PaymentStatus @default(unpaid) @map("payment_status")

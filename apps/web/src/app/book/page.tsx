@@ -52,6 +52,8 @@ export default function BookPage() {
   const [parent, setParent] = useState({ firstName: "", lastName: "", phone: "", email: "" });
   const [children, setChildren] = useState<ChildForm[]>([emptyChild()]);
   const [notes, setNotes] = useState("");
+  const [waiverAccepted, setWaiverAccepted] = useState(false);
+  const [showWaiver, setShowWaiver] = useState(false);
 
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -101,7 +103,7 @@ export default function BookPage() {
   const childValid = (c: ChildForm) => c.firstName.trim() && c.lastName.trim() && c.birthMonth && c.birthYear;
   const detailsValid =
     parent.firstName.trim() && parent.lastName.trim() && isAuPhone(parent.phone) &&
-    children.length >= 1 && children.every(childValid);
+    children.length >= 1 && children.every(childValid) && waiverAccepted;
 
   const perChild = quote?.perChildCents ?? 0;
   const totalCents = perChild * children.length;
@@ -118,6 +120,7 @@ export default function BookPage() {
         startAt: iso(date, start),
         endAt: iso(date, end),
         notes: notes.trim() || undefined,
+        waiverAccepted,
       });
       setConfirmedCount(req.childCount);
       if (req.testMode || !req.publishableKey) {
@@ -258,6 +261,23 @@ export default function BookPage() {
               <Labeled label="Anything we should know? (optional)">
                 <textarea className={field} rows={2} value={notes} onChange={(e) => setNotes(e.target.value)} />
               </Labeled>
+            </div>
+
+            {/* Mandatory waiver acknowledgement */}
+            <div className="rounded-card border border-line bg-white p-5 sm:p-6">
+              <p className="font-display text-base font-bold text-ink">Parent / guardian agreement</p>
+              <button type="button" className="mt-1 text-sm font-medium text-teal hover:underline" onClick={() => setShowWaiver((v) => !v)}>
+                {showWaiver ? "Hide the agreement" : "Read the agreement"}
+              </button>
+              {showWaiver && (
+                <div className="mt-2 max-h-64 overflow-y-auto whitespace-pre-wrap rounded-lg border border-line bg-sand p-3 text-xs leading-relaxed text-ink/80">
+                  {cfg?.waiverText}
+                </div>
+              )}
+              <label className="mt-3 flex items-start gap-2 text-sm text-ink">
+                <input type="checkbox" className="mt-0.5" checked={waiverAccepted} onChange={(e) => setWaiverAccepted(e.target.checked)} />
+                <span>I have read and accept the parent/guardian agreement above. <span className="text-coral">*</span></span>
+              </label>
             </div>
 
             {error && <p className="rounded-xl bg-coral/10 px-4 py-3 text-sm text-coral">{error}</p>}
