@@ -4,7 +4,7 @@
 // method: single teal hue for magnitude/time; a validated categorical set only
 // where distinct identities coexist; all text in ink tokens (never the mark
 // colour); recessive axes; rounded data-ends; per-mark hover via <title>.
-const TEAL = "#2F6F62";
+const TEAL = "#B00020";
 const INK = "#14231F";
 const MUTED = "#6b7280";
 const LINE = "#DDE3E0";

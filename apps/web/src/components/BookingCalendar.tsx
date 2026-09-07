@@ -17,7 +17,7 @@ function heat(total: number, scale: number): { bg: string; fg: string } {
   if (total <= 0) return { bg: "transparent", fg: "#14231F" };
   const ratio = Math.min(1, total / scale);
   const alpha = ratio <= 0.25 ? 0.18 : ratio <= 0.5 ? 0.4 : ratio <= 0.75 ? 0.64 : 0.88;
-  return { bg: `rgba(47,111,98,${alpha})`, fg: alpha >= 0.6 ? "#ffffff" : "#1F4A40" };
+  return { bg: `rgba(176,0,32,${alpha})`, fg: alpha >= 0.6 ? "#ffffff" : "#7B0016" };
 }
 
 export default function BookingCalendar({ selected, onSelect, refreshKey = 0 }: { selected: string; onSelect: (iso: string) => void; refreshKey?: number }) {
@@ -121,7 +121,7 @@ export default function BookingCalendar({ selected, onSelect, refreshKey = 0 }: 
 
       <div className="mt-3 flex flex-wrap items-center gap-3 text-xs text-ink/50">
         <span className="flex items-center gap-1">Fewer
-          {[0.18, 0.4, 0.64, 0.88].map((a) => <span key={a} className="inline-block h-3 w-4 rounded" style={{ backgroundColor: `rgba(47,111,98,${a})` }} />)}
+          {[0.18, 0.4, 0.64, 0.88].map((a) => <span key={a} className="inline-block h-3 w-4 rounded" style={{ backgroundColor: `rgba(176,0,32,${a})` }} />)}
           More
         </span>
         <span className="flex items-center gap-1"><span className="inline-block h-2 w-2 rounded-full bg-coral" /> pending request</span>

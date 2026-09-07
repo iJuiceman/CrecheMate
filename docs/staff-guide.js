@@ -7,8 +7,8 @@ const PDFDocument = require("pdfkit");
 const fs = require("fs");
 const path = require("path");
 
-const TEAL = "#2F6F62";
-const TEAL_DARK = "#1F4A40";
+const TEAL = "#B00020";
+const TEAL_DARK = "#7B0016";
 const INK = "#14231F";
 const MUTED = "#6b7280";
 const CORAL = "#C1443D";
@@ -83,7 +83,7 @@ function note(text) {
 doc.rect(0, 0, doc.page.width, 130).fillColor(TEAL).fill();
 doc.fillColor("#ffffff").font("Helvetica-Bold").fontSize(28).text("CrecheMate", doc.page.margins.left, 42);
 doc.font("Helvetica").fontSize(13).text("Staff guide — features & everyday instructions", doc.page.margins.left, 78);
-doc.fontSize(9).fillColor("#EAF2EF").text(`Prepared ${new Date().toLocaleDateString("en-AU", { day: "numeric", month: "long", year: "numeric" })}`, doc.page.margins.left, 100);
+doc.fontSize(9).fillColor("#F7E6E9").text(`Prepared ${new Date().toLocaleDateString("en-AU", { day: "numeric", month: "long", year: "numeric" })}`, doc.page.margins.left, 100);
 doc.y = 150;
 doc.x = doc.page.margins.left;
 
