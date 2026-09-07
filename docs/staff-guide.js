@@ -139,7 +139,7 @@ note("Admins: editing the waiver wording under Settings bumps its version, and e
 // ── 4. Families & children ──
 h1("Families & children");
 bullet("Search by child or parent name, or phone. Red “medical” tags flag children with allergies / medical requirements — always read the child's card before care.");
-bullet("Add a family with “+ New family”: parent details, an optional second parent/guardian, the child (birth month/year), and at least one emergency contact (tick who may collect the child).");
+bullet("Add a family with “+ New family”: parent details, an optional second parent/guardian, and the child (birth month/year). The parents are the child's emergency contacts automatically — add extra contacts (grandparent, carer, other) only if the family wants more people listed, and tick who may collect the child.");
 bullet("Open a family to edit parent details (including the second parent — clear the first name to remove them), add more children, book a session, or check a child straight in.");
 bullet("Children's medical notes and waiver signatures are encrypted — they only appear where staff need them.");
 bullet("Parents can also self-register on the iPad kiosk (the /intake screen): their details, child, emergency contacts and a signed waiver, with no staff time needed.");
