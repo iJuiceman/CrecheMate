@@ -7,12 +7,12 @@ const PDFDocument = require("pdfkit");
 const fs = require("fs");
 const path = require("path");
 
-const TEAL = "#0d9488";
-const TEAL_DARK = "#0f766e";
-const INK = "#1f2933";
+const TEAL = "#2F6F62";
+const TEAL_DARK = "#1F4A40";
+const INK = "#14231F";
 const MUTED = "#6b7280";
-const CORAL = "#e11d48";
-const LINE = "#e7e0d6";
+const CORAL = "#C1443D";
+const LINE = "#DDE3E0";
 
 const OUT = path.join(__dirname, "CrecheMate-Staff-Guide.pdf");
 const doc = new PDFDocument({
@@ -83,7 +83,7 @@ function note(text) {
 doc.rect(0, 0, doc.page.width, 130).fillColor(TEAL).fill();
 doc.fillColor("#ffffff").font("Helvetica-Bold").fontSize(28).text("CrecheMate", doc.page.margins.left, 42);
 doc.font("Helvetica").fontSize(13).text("Staff guide — features & everyday instructions", doc.page.margins.left, 78);
-doc.fontSize(9).fillColor("#ccfbf1").text(`Prepared ${new Date().toLocaleDateString("en-AU", { day: "numeric", month: "long", year: "numeric" })}`, doc.page.margins.left, 100);
+doc.fontSize(9).fillColor("#EAF2EF").text(`Prepared ${new Date().toLocaleDateString("en-AU", { day: "numeric", month: "long", year: "numeric" })}`, doc.page.margins.left, 100);
 doc.y = 150;
 doc.x = doc.page.margins.left;
 

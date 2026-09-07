@@ -6,16 +6,19 @@ const config: Config = {
   content: ["./src/**/*.{ts,tsx}"],
   theme: {
     extend: {
+      // Racqueteer's palette (the platform app), mapped onto CrecheMate's
+      // existing token names so every component re-skins without edits:
+      // teal = Racqueteer "court" green, coral = "clay" red, sand = "chalk".
       colors: {
-        ink: "#1f2933", // primary text — soft near-black
+        ink: "#14231F", // near-black, deep court-shadow green — primary text
         teal: {
-          DEFAULT: "#0d9488",
-          dark: "#0f766e",
-          light: "#ccfbf1",
+          DEFAULT: "#2F6F62", // court green — primary accent
+          dark: "#1F4A40",
+          light: "#EAF2EF",
         },
-        coral: "#e11d48", // medical / urgent
-        sand: "#faf7f2", // page background
-        line: "#e7e0d6",
+        coral: "#C1443D", // clay — medical / urgent / errors
+        sand: "#F4F6F5", // chalk — cool off-white page background
+        line: "#DDE3E0", // court-line hairline dividers
       },
       fontFamily: {
         display: ["ui-rounded", "system-ui", "sans-serif"],

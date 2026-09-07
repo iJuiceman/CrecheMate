@@ -4,10 +4,10 @@
 // method: single teal hue for magnitude/time; a validated categorical set only
 // where distinct identities coexist; all text in ink tokens (never the mark
 // colour); recessive axes; rounded data-ends; per-mark hover via <title>.
-const TEAL = "#0d9488";
-const INK = "#1f2933";
+const TEAL = "#2F6F62";
+const INK = "#14231F";
 const MUTED = "#6b7280";
-const LINE = "#e7e0d6";
+const LINE = "#DDE3E0";
 // Validated categorical slots (blue / orange / aqua / yellow) — pass adjacent
 // CVD + normal-vision gates; aqua & yellow are direct-labelled (relief rule).
 export const CATEGORICAL = ["#2a78d6", "#eb6834", "#1baf7a", "#eda100"];

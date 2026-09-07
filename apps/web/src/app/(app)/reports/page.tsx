@@ -195,7 +195,7 @@ function Financial({ d }: { d: any }) {
       </div>
       <div className="grid gap-4 lg:grid-cols-2">
         <Panel title="Collected vs outstanding per day">
-          <StackedDayBars data={d.byDay.map((r: any) => ({ label: dayLabel(r.date), values: [r.collected, r.outstanding] }))} series={[{ label: "Collected", color: CATEGORICAL[2] }, { label: "Outstanding", color: "#e11d48" }]} />
+          <StackedDayBars data={d.byDay.map((r: any) => ({ label: dayLabel(r.date), values: [r.collected, r.outstanding] }))} series={[{ label: "Collected", color: CATEGORICAL[2] }, { label: "Outstanding", color: "#C1443D" }]} />
         </Panel>
         <Panel title="By payment method">
           <HBars data={d.byMethod.map((m: any) => ({ label: cap(m.method), value: m.cents }))} colors={CATEGORICAL} format={(n) => money(n)} />

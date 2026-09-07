@@ -4,8 +4,8 @@
 
 html,
 body {
-  background: #faf7f2;
-  color: #1f2933;
+  background: #F4F6F5; /* chalk (Racqueteer palette) */
+  color: #14231F; /* ink */
 }
 
 /* Inputs share one calm look. */
