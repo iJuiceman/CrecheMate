@@ -208,16 +208,21 @@ export class PaymentsService {
   /** Refund a captured payment (e.g. a late cancellation). Pass `amountCents`
    * for a partial refund (the cancellation policy's percentage); omit for a
    * full refund. No-op for test-mode stubs, which never moved real money. */
-  async refund(paymentIntentId: string | null | undefined, amountCents?: number): Promise<void> {
+  async refund(paymentIntentId: string | null | undefined, amountCents?: number, idempotencyKey?: string): Promise<void> {
     if (!paymentIntentId || paymentIntentId.startsWith("pi_test_")) return;
     if (amountCents !== undefined && amountCents <= 0) return; // nothing to refund
     const key = await this.secretKey();
     if (!key) return; // account was unlinked; nothing we can do here
     try {
-      await this.client(key).refunds.create({
-        payment_intent: paymentIntentId,
-        ...(amountCents !== undefined ? { amount: amountCents } : {}),
-      });
+      await this.client(key).refunds.create(
+        {
+          payment_intent: paymentIntentId,
+          ...(amountCents !== undefined ? { amount: amountCents } : {}),
+        },
+        // Stripe-side backstop: a retried/raced call with the same key can
+        // never move the money twice.
+        idempotencyKey ? { idempotencyKey } : undefined,
+      );
     } catch (e) {
       this.logger.error(`Stripe refund failed for ${paymentIntentId}: ${(e as Error).message}`);
       throw new BadRequestException("Refund failed — issue it manually in the Stripe dashboard");

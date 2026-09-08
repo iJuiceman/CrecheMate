@@ -310,12 +310,36 @@ export class BookingsService {
     } catch (e) {
       // Charged but the booking didn't happen (session full, a serialization
       // conflict from a concurrent booking, or an error). Nothing was committed,
-      // so a full refund is correct. Record why on the request.
+      // so a full refund is correct. The money DID move in, so paymentStatus
+      // stays "paid" — that keeps both bank lines (charge + refund) visible to
+      // Finance/Xero; refundedAt is stamped only when the refund actually
+      // succeeded, so a failed refund is never booked as one.
       const full = e instanceof ConflictException && e.message === "__SESSION_FULL__";
-      await this.payments.refund(stripePaymentIntentId).catch(() => {});
+      let refundOk = true;
+      try {
+        await this.payments.refund(stripePaymentIntentId, undefined, `booking-refund:${id}`);
+      } catch {
+        refundOk = false;
+        console.error(`Auto-refund FAILED for booking request ${id} (intent ${stripePaymentIntentId})`);
+      }
       await this.prisma.bookingRequest
-        .update({ where: { id }, data: { status: "declined", paymentStatus: "unpaid", notes: `${request.notes ? request.notes + " · " : ""}Auto-refunded: ${full ? "session filled" : "booking error"}` } })
+        .update({
+          where: { id },
+          data: {
+            status: "declined",
+            paymentStatus: "paid",
+            refundedAt: refundOk ? new Date() : null,
+            notes: `${request.notes ? request.notes + " · " : ""}${
+              refundOk
+                ? `Auto-refunded: ${full ? "session filled" : "booking error"}`
+                : `CHARGED BUT REFUND FAILED — refund manually in the Stripe dashboard (intent ${stripePaymentIntentId}).`
+            }`,
+          },
+        })
         .catch(() => {});
+      if (!refundOk) {
+        throw new BadRequestException("We couldn't finalise your booking. Your payment will be refunded by our staff — please contact the centre.");
+      }
       throw full
         ? new ConflictException("Sorry — that session just filled up, so your payment has been fully refunded. Please choose another time.")
         : new BadRequestException("Couldn't finalise your booking just now — your payment has been refunded. Please try again.");
@@ -469,11 +493,13 @@ export class BookingsService {
       notes: request.notes,
     });
 
-    // Status/decidedAt/decidedById were set by the atomic claim; just link the
-    // created booking and matched child.
+    // Status/decidedAt/decidedById were set by the atomic claim; link the
+    // created booking and matched child, and stamp the capture as paid so the
+    // request's money is visible to reports (L5: it previously stayed
+    // "authorized" forever after a successful capture).
     await this.prisma.bookingRequest.update({
       where: { id },
-      data: { attendanceId: booking.id, childId },
+      data: { attendanceId: booking.id, childId, paymentStatus: "paid", paidAt: capturedAt },
     });
     return { ok: true, attendanceId: booking.id };
   }

@@ -67,6 +67,7 @@ export class FinanceService {
     };
     const startD = (from ? parse(from, "from") : today.minus({ days: 29 })).startOf("day");
     const endExclusive = (to ? parse(to, "to") : today).startOf("day").plus({ days: 1 });
+    if (endExclusive <= startD) throw new BadRequestException("The end date must not be before the start date");
     return {
       start: startD.toJSDate(),
       end: endExclusive.toJSDate(),
@@ -82,7 +83,9 @@ export class FinanceService {
   /** Deterministic invoice number from a row id, so re-exports of overlapping
    *  ranges produce identical numbers and Xero's duplicate check skips them. */
   private invoiceNo(prefix: string, id: string, kind?: "B" | "R") {
-    return `${prefix}-${kind ? `${kind}-` : ""}${id.slice(0, 8).toUpperCase()}`;
+    // 12 hex chars (48 bits): 8 was collision-prone enough (~1.2% at 10k rows)
+    // that Xero's duplicate-skip could silently drop a REAL invoice.
+    return `${prefix}-${kind ? `${kind}-` : ""}${id.replace(/-/g, "").slice(0, 12).toUpperCase()}`;
   }
 
   async summary(from?: string, to?: string): Promise<FinanceData> {
@@ -110,11 +113,13 @@ export class FinanceService {
         },
         orderBy: { paidAt: "asc" },
       }),
-      // Money back out: online prepayments refunded when a request was declined,
-      // keyed by the refund (decision) date.
+      // Money back out: online prepayments actually refunded (auto-refund on a
+      // filled session, or a declined request) — keyed by the refund date.
+      // refundedAt is stamped only when the Stripe refund SUCCEEDED, so a
+      // charged-but-refund-failed request is never booked as refunded.
       this.prisma.bookingRequest.findMany({
-        where: { status: "declined", paymentStatus: "paid", decidedAt: { gte: r.start, lt: r.end } },
-        orderBy: { decidedAt: "asc" },
+        where: { status: "declined", paymentStatus: "paid", refundedAt: { gte: r.start, lt: r.end } },
+        orderBy: { refundedAt: "asc" },
       }),
       // Context KPIs (not exported): unpaid/waived fees for sessions in the window.
       this.prisma.attendance.findMany({
@@ -194,7 +199,7 @@ export class FinanceService {
         invoiceNumber: this.invoiceNo(f.xeroInvoicePrefix, q.id, "B"),
         creditNumber: this.invoiceNo(f.xeroInvoicePrefix, q.id, "R"),
         paidDate: this.localDate(q.paidAt, tz) || this.localDate(q.decidedAt, tz),
-        refundDate: this.localDate(q.decidedAt, tz),
+        refundDate: this.localDate(q.refundedAt ?? q.decidedAt, tz),
         child: `${q.childFirstName} ${q.childLastName}`,
         parent: `${q.parentFirstName} ${q.parentLastName}`,
         parentEmail: q.parentEmail ?? null,
@@ -285,7 +290,7 @@ export class FinanceService {
         "Reference": `Refund of ${q.invoiceNumber}`,
         "*InvoiceDate": q.refundDate,
         "*DueDate": q.refundDate,
-        "*Description": `Refund - declined online booking - ${q.child}`,
+        "*Description": `Creche fee refund - ${q.child}`,
         "*Quantity": 1,
         "*UnitAmount": `-${dollars(q.amountCents)}`,
         "*AccountCode": d.xero.accountCode,

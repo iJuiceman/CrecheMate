@@ -202,7 +202,20 @@ function InCareCard({ a, courts, rate, busy, act }: { a: Attendance; courts: str
         <span>In {a.checkInAt ? timeSince(a.checkInAt) : "—"} · since {fmtTime(a.checkInAt)}</span>
         <span className="tabular-nums">~{money(estFee(a.checkInAt, rate))}</span>
       </div>
-      <button className="btn mt-3 w-full" disabled={disabled} onClick={() => act(a.id, () => api.post(`/attendance/${a.id}/check-out`, {}))}>
+      <button
+        className="btn mt-3 w-full"
+        disabled={disabled}
+        onClick={() =>
+          act(a.id, async () => {
+            const r = await api.post<{ overstayCents?: number }>(`/attendance/${a.id}/check-out`, {});
+            // A prepaid child who stayed past their booked window: the settled
+            // fee is frozen server-side — tell the desk what to collect.
+            if (r.overstayCents && r.overstayCents > 0) {
+              window.alert(`Heads up: time in care ran past the prepaid window — collect ${money(r.overstayCents)} at the desk.`);
+            }
+          })
+        }
+      >
         {disabled ? "…" : "Check out"}
       </button>
     </div>

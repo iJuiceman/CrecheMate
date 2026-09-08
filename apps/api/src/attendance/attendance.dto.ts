@@ -75,6 +75,7 @@ export class TakePaymentDto {
   // Required only when method = online (a verified Stripe intent for the fee).
   @IsOptional()
   @IsString()
+  @MaxLength(255)
   stripePaymentIntentId?: string;
 }
 
@@ -86,5 +87,6 @@ export class CheckOutDto {
 
   @IsOptional()
   @IsString()
+  @MaxLength(255)
   stripePaymentIntentId?: string;
 }

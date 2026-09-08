@@ -164,13 +164,16 @@ export class ReportsService {
       }),
     ]);
 
-    let collected = 0, outstanding = 0, waived = 0;
+    let collected = 0, outstanding = 0, waived = 0, attRefunded = 0;
     const method = { cash: 0, card: 0, eftpos: 0, online: 0 } as Record<string, number>;
     const byDay = this.emptyByDay(r.days, ["collected", "outstanding"]);
     const rows = atts.map((a) => {
       const day = this.localDate(a.serviceDate, f.timezone)!;
       if (a.paymentStatus === "paid") {
         collected += a.feeCents;
+        // Late-cancellation refunds come straight back off the money story —
+        // ten fully-refunded bookings are not $200 of revenue.
+        attRefunded += a.refundedCents ?? 0;
         if (a.paymentMethod && method[a.paymentMethod] !== undefined) method[a.paymentMethod] += a.feeCents;
         if (byDay[day]) byDay[day].collected += a.feeCents;
       } else if (a.paymentStatus === "unpaid" && a.status === "checked_out") {
@@ -192,11 +195,16 @@ export class ReportsService {
       };
     });
 
-    const refunded = requests
-      .filter((q) => q.status === "declined" && q.paymentStatus === "paid")
+    // Refunds of prepayments that never became an attendance (auto-refunded /
+    // declined) — refundedAt is only stamped on an ACTUAL successful refund.
+    const requestRefunded = requests
+      .filter((q) => q.status === "declined" && q.paymentStatus === "paid" && q.refundedAt)
       .reduce((s, q) => s + q.feeCents, 0);
+    const refunded = requestRefunded + attRefunded;
+    // Prepaid = money charged online for sessions NOT yet counted as an
+    // attendance (pending only) — confirmed ones already sit inside collected.
     const prepaid = requests
-      .filter((q) => q.paymentStatus === "paid")
+      .filter((q) => q.paymentStatus === "paid" && q.status === "pending")
       .reduce((s, q) => s + q.feeCents, 0);
 
     return {

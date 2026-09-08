@@ -377,7 +377,14 @@ export class AttendanceService {
     if (!a) throw new NotFoundException("Attendance not found");
     if (a.status !== "checked_in" || !a.checkInAt) throw new BadRequestException("This child isn't currently checked in");
     const now = new Date();
-    const feeCents = this.feeFor(a.checkInAt, now, f.hourlyRateCents);
+    // A settled fee is FROZEN: recomputing it on a prepaid/waived row either
+    // books phantom revenue (overstay) or silently shrinks banked money (early
+    // pickup) — the ledger must keep matching the bank. An overstay is
+    // surfaced to the desk as a difference to collect, not a rewrite.
+    const settled = a.paymentStatus === "paid" || a.paymentStatus === "waived";
+    const actualFeeCents = this.feeFor(a.checkInAt, now, f.hourlyRateCents);
+    const feeCents = settled ? a.feeCents : actualFeeCents;
+    const overstayCents = settled && actualFeeCents > a.feeCents ? actualFeeCents - a.feeCents : 0;
 
     // Optionally settle payment at the same time.
     let paymentStatus = a.paymentStatus;
@@ -395,8 +402,10 @@ export class AttendanceService {
       paidAt = now;
     }
 
-    const updated = await this.prisma.attendance.update({
-      where: { id },
+    // Atomic claim: only one concurrent check-out wins (the status predicate
+    // makes the losing request a clean 400 instead of a silent overwrite).
+    const claim = await this.prisma.attendance.updateMany({
+      where: { id, status: "checked_in" },
       data: {
         status: "checked_out",
         checkOutAt: now,
@@ -406,18 +415,23 @@ export class AttendanceService {
         paymentMethod,
         stripePaymentIntentId,
         paidAt,
+        ...(overstayCents > 0
+          ? { notes: `${a.notes ? a.notes + " · " : ""}Overstay: time in care bills ${(actualFeeCents / 100).toFixed(2)} vs ${(a.feeCents / 100).toFixed(2)} prepaid — collect ${(overstayCents / 100).toFixed(2)} at the desk.` }
+          : {}),
       },
-      include: this.childInclude,
     });
-    return this.serialize(updated);
+    if (claim.count === 0) throw new BadRequestException("This child isn't currently checked in");
+    const updated = await this.prisma.attendance.findUnique({ where: { id }, include: this.childInclude });
+    return { ...this.serialize(updated), overstayCents };
   }
 
   /** A Stripe intent for the fee, so staff can take a card onsite (online method). */
   async paymentIntent(id: string) {
     const a = await this.prisma.attendance.findUnique({ where: { id } });
     if (!a) throw new NotFoundException("Attendance not found");
+    if (a.status === "cancelled" || a.status === "no_show") throw new BadRequestException("This booking was cancelled");
     if (a.feeCents <= 0) throw new BadRequestException("Nothing to pay");
-    if (a.paymentStatus === "paid") throw new BadRequestException("Already paid");
+    if (a.paymentStatus === "paid" || a.paymentStatus === "waived") throw new BadRequestException("Already settled");
     return this.payments.createIntent(a.feeCents, `attendance:${id}`);
   }
 
@@ -431,25 +445,34 @@ export class AttendanceService {
       if (!dto.stripePaymentIntentId) throw new BadRequestException("A card payment reference is required");
       await this.payments.assertSucceeded(dto.stripePaymentIntentId, a.feeCents, `attendance:${id}`);
     }
-    const updated = await this.prisma.attendance.update({
-      where: { id },
+    // Guarded claim: the fee we verified must still be the fee on the row, and
+    // it must not have been paid concurrently — otherwise the losing request
+    // fails cleanly instead of overwriting the winner.
+    const claim = await this.prisma.attendance.updateMany({
+      where: { id, paymentStatus: { in: ["unpaid", "authorized"] }, feeCents: a.feeCents },
       data: {
         paymentStatus: "paid",
         paymentMethod: dto.method,
         stripePaymentIntentId: dto.method === "online" ? dto.stripePaymentIntentId : null,
         paidAt: new Date(),
       },
-      include: this.childInclude,
     });
+    if (claim.count === 0) throw new BadRequestException("This fee was just settled or changed — refresh and check before charging again");
+    const updated = await this.prisma.attendance.findUnique({ where: { id }, include: this.childInclude });
     return this.serialize(updated);
   }
 
   async waivePayment(id: string) {
     const a = await this.prisma.attendance.findUnique({ where: { id } });
     if (!a) throw new NotFoundException("Attendance not found");
+    // A collected payment can't be "waived" away — that would silently drop
+    // banked money from the books while the cash stays in the bank.
+    if (a.paymentStatus === "paid") throw new BadRequestException("This fee has already been paid — a refund, not a waiver, is the way to give it back");
+    if (a.status === "cancelled") throw new BadRequestException("This booking was cancelled");
     const updated = await this.prisma.attendance.update({
       where: { id },
-      data: { paymentStatus: "waived", paidAt: new Date() },
+      // paidAt stays untouched: waived fees were never collected.
+      data: { paymentStatus: "waived" },
       include: this.childInclude,
     });
     return this.serialize(updated);
@@ -467,6 +490,16 @@ export class AttendanceService {
     const a = await this.prisma.attendance.findUnique({ where: { id } });
     if (!a) throw new NotFoundException("Attendance not found");
     if (a.status !== "booked") throw new BadRequestException("Only a booking that hasn't started can be cancelled");
+
+    // Atomically CLAIM the cancellation before any money moves: a double-click
+    // or two concurrent staff both passing the read above would otherwise each
+    // issue the partial refund, and Stripe stacks partial refunds — money out
+    // twice, recorded once. The loser of this claim gets a clean 400.
+    const claim = await this.prisma.attendance.updateMany({
+      where: { id, status: "booked" },
+      data: { status: "cancelled" },
+    });
+    if (claim.count === 0) throw new BadRequestException("This booking was already cancelled");
 
     let refundedCents = 0;
     let refundPercent = 0;
@@ -491,15 +524,25 @@ export class AttendanceService {
         forcePartial = !!intentId; // never full-refund a shared multi-child intent
       }
       if (refundedCents > 0 && intentId) {
-        // Full refund omits the amount; partial passes the reduced cents.
-        await this.payments.refund(intentId, fullRefund && !forcePartial ? undefined : refundedCents);
+        try {
+          // Full refund omits the amount; partial passes the reduced cents. The
+          // idempotency key means a retried request can't refund twice.
+          await this.payments.refund(intentId, fullRefund && !forcePartial ? undefined : refundedCents, `cancel:${id}`);
+        } catch (e) {
+          // The cancellation stands, but the money did NOT move — record that
+          // loudly instead of booking a refund that never happened.
+          await this.prisma.attendance.update({
+            where: { id },
+            data: { notes: `${a.notes ? a.notes + " · " : ""}REFUND FAILED — issue ${(refundedCents / 100).toFixed(2)} manually in the Stripe dashboard (intent ${intentId}).` },
+          });
+          throw e;
+        }
       }
     }
 
     await this.prisma.attendance.update({
       where: { id },
       data: {
-        status: "cancelled",
         refundedCents,
         refundedAt: refundedCents > 0 ? new Date() : null,
       },
