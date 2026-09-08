@@ -269,6 +269,40 @@ New Prisma models: add a migration; the API container runs
   = grey) across the open→close axis with hour gridlines + a "now" line;
   roster payload now includes `openTime`/`closeTime`.
 
+- **Integrity audit + full remediation (2026-09-08):** a deep audit (5 review
+  agents + live-DB invariants) found 50 issues; all fixed in five commits
+  (049db84 money, 1112088 capacity, fabe61b public perimeter/waiver, 870947a
+  accounts, a9d9c93 timezone+rest). Standing invariants to honour:
+  - **Settled money is frozen**: check-out never rewrites feeCents on a
+    paid/waived row (overstay returned as `overstayCents` + note); waive
+    refuses paid rows; cancel CLAIMS `status=booked` atomically before any
+    refund and passes a Stripe `idempotencyKey`.
+  - **Refunds are only booked when they happened**: `refundedAt` (attendance +
+    BookingRequest) is stamped on Stripe success only; the auto-refund path
+    keeps `paymentStatus=paid` so both bank lines reach Finance/Xero; a failed
+    refund is recorded loudly, never silently.
+  - **Capacity counts drop-ins**: `occupiedForWindow()` is the ONLY correct
+    occupancy predicate (scheduled overlaps + open drop-ins when the window
+    covers now); desk check-in/drop-in run capacity+write in one Serializable
+    tx; duplicate drop-ins refused; `/attendance/:id/no-show` and admin
+    `/attendance/:id/force-checkout` close out stale rows.
+  - **The public booking route never touches a family's waiver** — the ticked
+    acknowledgement lives on the BookingRequest and is carried to the guardian
+    at STAFF check-in; resolveFamily runs inside the serializable tx so failed
+    bookings leave no fabricated children.
+  - **Payments fail closed**: undecryptable stored Stripe key throws (never
+    falls into stub mode); stub intent ids are HMAC-signed (JWT_SECRET);
+    `sk_test_` keys are rejected at link time; intents are card-only.
+  - **Accounts**: 8-failure/15-min lockout; `POST /auth/change-password`;
+    login rows carry the attempted username in the audit log; web logs out on
+    401. GET /incidents + GET /attendance are audited sensitive reads.
+  - **One timezone**: offset-less client datetimes are interpreted in the
+    facility zone API-side; web date math uses `lib/tz.ts`
+    (dateKeyInTz/minutesInTz/useFacilityTz); the roster page runs on plain
+    date keys (DST-proof); `settings.timezone` is IANA-validated.
+  - Waiver text edits: default-text saves and `waiverMinorEdit` don't bump the
+    version; real changes bump atomically (`increment`).
+
 ## Not yet built (backlog)
 
 - Receipts/PDF, reporting/exports, daily attendance sheet.

@@ -17,7 +17,7 @@ export class UpdateSettingsDto {
   @IsOptional()
   @IsString()
   @MaxLength(60)
-  @IsIn(Intl.supportedValuesOf("timeZone"), { message: "timezone must be a valid IANA zone, e.g. Australia/Sydney" })
+  @IsIn((Intl as any).supportedValuesOf("timeZone"), { message: "timezone must be a valid IANA zone, e.g. Australia/Sydney" })
   timezone?: string;
 
   @IsOptional()

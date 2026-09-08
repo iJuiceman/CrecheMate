@@ -1,7 +1,7 @@
 import { BadRequestException, Injectable, NotFoundException } from "@nestjs/common";
 import { PrismaService } from "../prisma/prisma.service";
 import { JwtPayload } from "../auth/jwt-payload.interface";
-import { decryptField, encryptField } from "../common/encryption.util";
+import { decryptFieldOrSentinel, encryptField } from "../common/encryption.util";
 import { CreateIncidentDto } from "./incidents.dto";
 
 type IncidentRow = {
