@@ -156,7 +156,7 @@ export default function DashboardPage() {
         </Section>
       )}
 
-      {showCheckIn && <CheckInModal courts={roster?.courts ?? []} waiverVersion={roster?.waiverVersion ?? 1} onClose={() => setShowCheckIn(false)} onDone={() => { setShowCheckIn(false); load(); }} />}
+      {showCheckIn && <CheckInModal courts={roster?.courts ?? []} waiverVersion={roster?.waiverVersion ?? null} onClose={() => setShowCheckIn(false)} onDone={() => { setShowCheckIn(false); load(); }} />}
     </div>
   );
 }
@@ -246,7 +246,19 @@ function ExpectedCard({ a, courts, waiverVersion, busy, act }: { a: Attendance; 
   const waiverOk = a.child?.guardian?.waiverVersion === waiverVersion;
 
   function checkIn(waiverSignature?: string) {
-    return act(a.id, () => api.post(`/attendance/${a.id}/check-in`, { court: court.trim() || undefined, waiverSignature }));
+    return act(a.id, async () => {
+      try {
+        await api.post(`/attendance/${a.id}/check-in`, { court: court.trim() || undefined, waiverSignature });
+      } catch (e) {
+        // The server is the authority: an online booking's ticked acknowledgement
+        // passes without a signature; a genuine waiver refusal opens the pad.
+        if (!waiverSignature && e instanceof Error && /waiver/i.test(e.message)) {
+          setSignWaiver(true);
+          return; // swallowed — the modal takes over
+        }
+        throw e;
+      }
+    });
   }
 
   return (
@@ -254,14 +266,14 @@ function ExpectedCard({ a, courts, waiverVersion, busy, act }: { a: Attendance; 
       <ChildHeader a={a} />
       <p className="mt-2 text-sm text-ink/60">Booked {fmtTime(a.scheduledStart)} – {fmtTime(a.scheduledEnd)}</p>
       {!waiverOk && (
-        <p className="mt-2 rounded-md bg-amber-100 px-2 py-1 text-xs font-medium text-amber-800">✍ Waiver signature needed at check-in</p>
+        <p className="mt-2 rounded-md bg-amber-100 px-2 py-1 text-xs font-medium text-amber-800">✍ Waiver may need signing at check-in (online bookings carry their ticked acceptance)</p>
       )}
       <div className="mt-2">
         <label className="label">Court (where the parent will be)</label>
         <CourtInput value={court} onChange={setCourt} courts={courts} className="field py-1.5 text-sm" />
       </div>
       <div className="mt-3 flex gap-2">
-        <button className="btn flex-1" disabled={disabled} onClick={() => (waiverOk ? checkIn() : setSignWaiver(true))}>Check in</button>
+        <button className="btn flex-1" disabled={disabled} onClick={() => checkIn()}>Check in</button>
         <button className="btn-secondary" disabled={disabled} onClick={() => act(a.id, () => api.post(`/attendance/${a.id}/cancel`, {}))}>Cancel</button>
         {a.scheduledEnd && new Date(a.scheduledEnd) < new Date() && (
           <button className="btn-secondary" disabled={disabled} title="The booked window has passed and the child never arrived" onClick={() => act(a.id, () => api.post(`/attendance/${a.id}/no-show`, {}))}>No-show</button>
@@ -453,7 +465,7 @@ function PaymentRow({ attendanceId, feeCents, busyKey, onDone, onBusy }: { atten
   );
 }
 
-function CheckInModal({ courts, waiverVersion, onClose, onDone }: { courts: string[]; waiverVersion: number; onClose: () => void; onDone: () => void }) {
+function CheckInModal({ courts, waiverVersion, onClose, onDone }: { courts: string[]; waiverVersion: number | null; onClose: () => void; onDone: () => void }) {
   const [q, setQ] = useState("");
   const [results, setResults] = useState<Guardian[]>([]);
   const [busy, setBusy] = useState<string | null>(null);
@@ -493,7 +505,8 @@ function CheckInModal({ courts, waiverVersion, onClose, onDone }: { courts: stri
         {err && <p className="mt-2 text-sm text-coral">{err}</p>}
         <div className="mt-3 max-h-72 space-y-2 overflow-y-auto">
           {results.flatMap((g) => g.children.map((c) => {
-            const waiverOk = g.waiverVersion === waiverVersion;
+            // Fail CLOSED: unknown current version means collect a signature.
+            const waiverOk = waiverVersion != null && g.waiverVersion === waiverVersion;
             return (
               <div key={c.id} className="flex items-center justify-between rounded-lg border border-line px-3 py-2">
                 <div>

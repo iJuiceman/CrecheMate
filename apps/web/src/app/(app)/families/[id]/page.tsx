@@ -75,7 +75,7 @@ export default function FamilyDetail({ params }: { params: { id: string } }) {
           <ChildCard
             key={c.id}
             child={c}
-            waiverOk={currentWaiverVersion == null || family.waiverVersion === currentWaiverVersion}
+            waiverOk={currentWaiverVersion != null && family.waiverVersion === currentWaiverVersion}
             parentName={`${family.firstName} ${family.lastName}`}
             parentContacts={[
               { name: `${family.firstName} ${family.lastName}`, relationship: family.relationship, phone: family.phone },

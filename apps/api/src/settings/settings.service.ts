@@ -2,6 +2,7 @@ import { Injectable } from "@nestjs/common";
 import { PrismaService } from "../prisma/prisma.service";
 import { PaymentsService } from "../payments/payments.service";
 import { UpdateSettingsDto } from "./settings.dto";
+import { DEFAULT_WAIVER } from "../intake/intake.service";
 
 @Injectable()
 export class SettingsService {
@@ -38,12 +39,20 @@ export class SettingsService {
 
   async update(dto: UpdateSettingsDto) {
     const current = await this.get();
+    const { waiverMinorEdit, ...fields } = dto;
     // Bump the waiver version whenever its wording actually changes, so each
-    // parent's signature stays tied to the text they saw.
-    const waiverChanged = dto.waiverText !== undefined && dto.waiverText !== (current.waiverText ?? "");
+    // parent's signature stays tied to the text they saw. A version bump makes
+    // EVERY family re-sign at their next check-in, so:
+    //  - a stored null compares against the served DEFAULT_WAIVER — saving the
+    //    pre-filled default text unchanged must NOT invalidate the facility;
+    //  - waiverMinorEdit lets an admin fix a typo without a re-sign campaign;
+    //  - the increment is atomic, so two concurrent saves can't share a version.
+    const effectiveCurrent = current.waiverText?.trim() ? current.waiverText : DEFAULT_WAIVER;
+    const waiverChanged =
+      dto.waiverText !== undefined && dto.waiverText.trim() !== effectiveCurrent.trim() && !waiverMinorEdit;
     await this.prisma.facilitySettings.update({
       where: { id: current.id },
-      data: { ...dto, ...(waiverChanged ? { waiverVersion: current.waiverVersion + 1 } : {}) },
+      data: { ...fields, ...(waiverChanged ? { waiverVersion: { increment: 1 } } : {}) },
     });
     return this.publicView();
   }

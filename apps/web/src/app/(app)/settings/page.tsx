@@ -10,6 +10,9 @@ export default function SettingsPage() {
   const [error, setError] = useState<string | null>(null);
   const [saved, setSaved] = useState(false);
   const [newCourt, setNewCourt] = useState("");
+  // "Minor wording fix" — save the waiver text without bumping the version
+  // (a bump makes every family re-sign at their next check-in).
+  const [minorEdit, setMinorEdit] = useState(false);
 
   useEffect(() => {
     api.get<Settings>("/settings").then(setS).catch((e) => setError(e.message));
@@ -33,7 +36,7 @@ export default function SettingsPage() {
         timezone: s.timezone,
         abn: s.abn || undefined,
         waiverText: s.waiverText ?? undefined,
-        courts: s.courts,
+        waiverMinorEdit: minorEdit || undefined,
       });
       setS(updated);
       setSaved(true);
@@ -167,7 +170,11 @@ export default function SettingsPage() {
             placeholder="Leave blank to use the built-in default waiver."
             onChange={(e) => setS({ ...s, waiverText: e.target.value })}
           />
-          <p className="mt-1 text-xs text-ink/50">Editing the wording bumps the version, so each parent&apos;s signature stays tied to the exact text they signed. Have your own waiver reviewed before going live.</p>
+          <p className="mt-1 text-xs text-ink/50">Editing the wording bumps the version — <b>every parent will be asked to re-sign at their next check-in</b>. Each signature stays tied to the exact text signed. Have your own waiver reviewed before going live.</p>
+          <label className="mt-2 flex items-start gap-2 text-sm text-ink">
+            <input type="checkbox" className="mt-0.5" checked={minorEdit} onChange={(e) => setMinorEdit(e.target.checked)} />
+            <span>Minor wording fix only — <b>don&apos;t</b> require every parent to re-sign</span>
+          </label>
         </div>
         <button className="btn" onClick={save} disabled={busy}>{busy ? "Saving…" : "Save waiver"}</button>
       </div>

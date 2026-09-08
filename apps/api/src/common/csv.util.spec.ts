@@ -29,3 +29,17 @@ describe("escapeCsvCell — CSV formula injection (CWE-1236)", () => {
     expect(escapeCsvCell(undefined)).toBe("");
   });
 });
+
+// The documented carve-out bypass: a leading minus followed by digits is still
+// a formula to Excel (`-2+3+cmd|' /C calc'!A0`). Only a WHOLE plain number
+// passes unguarded.
+describe("escapeCsvCell — minus-digit formula bypass", () => {
+  const { escapeCsvCell } = require("./csv.util");
+  it("guards -digit formulas", () => {
+    expect(escapeCsvCell("-2+3+cmd|' /C calc'!A0")).toContain("'-2+3");
+  });
+  it("keeps plain negative numbers numeric", () => {
+    expect(escapeCsvCell("-30.00")).toBe("-30.00");
+    expect(escapeCsvCell(-30)).toBe("-30");
+  });
+});

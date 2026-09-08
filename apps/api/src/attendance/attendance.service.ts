@@ -130,29 +130,53 @@ export class AttendanceService {
   /** Waivers are mandatory before care starts. If the child's guardian hasn't
    * accepted the CURRENT waiver, an on-screen signature supplied with the
    * check-in stamps it; without one the check-in is refused so the desk knows
-   * to collect a signature. */
-  private async assertWaiverForCheckIn(childId: string, signature?: string) {
+   * to collect a signature. For an online booking, the parent's ticked
+   * acknowledgement (recorded on the BookingRequest at booking time) is
+   * carried onto the guardian HERE, at staff check-in — never from the
+   * unauthenticated booking route, where a phone-number match alone must not
+   * be able to satisfy a family's waiver. */
+  private async assertWaiverForCheckIn(childId: string, signature?: string, attendanceId?: string) {
     const f = await this.facility();
     const current = f.waiverVersion ?? 1;
     const child = await this.prisma.child.findUnique({ where: { id: childId }, include: { guardian: true } });
     if (!child) throw new NotFoundException("Child not found");
     if (child.guardian.waiverVersion === current) return;
-    if (!signature) {
-      throw new ConflictException(
-        child.guardian.waiverAcceptedAt
-          ? "The waiver has been updated since this parent accepted it — please have them sign the current waiver on screen."
-          : "This parent hasn't signed the waiver — please have them sign it on screen before checking in.",
-      );
+    if (signature) {
+      await this.prisma.guardian.update({
+        where: { id: child.guardianId },
+        data: {
+          waiverSignatureEncrypted: encryptField(signature),
+          waiverAcceptedAt: new Date(),
+          waiverVersion: current,
+          waiverMethod: "signed",
+        },
+      });
+      return;
     }
-    await this.prisma.guardian.update({
-      where: { id: child.guardianId },
-      data: {
-        waiverSignatureEncrypted: encryptField(signature),
-        waiverAcceptedAt: new Date(),
-        waiverVersion: current,
-        waiverMethod: "signed",
-      },
-    });
+    // Online booking: honour the current-version acknowledgement the parent
+    // ticked when they booked.
+    if (attendanceId) {
+      const link = await this.prisma.bookingRequestChild.findUnique({
+        where: { attendanceId },
+        include: { request: { select: { waiverAcceptedAt: true, waiverVersion: true } } },
+      });
+      if (link?.request?.waiverAcceptedAt && link.request.waiverVersion === current) {
+        await this.prisma.guardian.update({
+          where: { id: child.guardianId },
+          data: {
+            waiverAcceptedAt: link.request.waiverAcceptedAt,
+            waiverVersion: current,
+            waiverMethod: "online",
+          },
+        });
+        return;
+      }
+    }
+    throw new ConflictException(
+      child.guardian.waiverAcceptedAt
+        ? "The waiver has been updated since this parent accepted it — please have them sign the current waiver on screen."
+        : "This parent hasn't signed the waiver — please have them sign it on screen before checking in.",
+    );
   }
 
   async roster() {
@@ -381,7 +405,7 @@ export class AttendanceService {
       throw new BadRequestException(`This booking is for ${when} — check it in on the day`);
     }
     await this.loadChild(a.childId); // re-checks the child is still active
-    await this.assertWaiverForCheckIn(a.childId, waiverSignature);
+    await this.assertWaiverForCheckIn(a.childId, waiverSignature, a.id);
     try {
       const updated = await this.prisma.$transaction(
         async (tx) => {

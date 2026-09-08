@@ -196,12 +196,18 @@ export class BookingsService {
     parentPhone: string;
     parentEmail: string | null;
     children: { firstName: string; lastName: string; birthMonth: number | null; birthYear: number | null }[];
-  }): Promise<{ guardianId: string; childIds: string[] }> {
+  }, tx: any = this.prisma): Promise<{ guardianId: string; childIds: string[] }> {
     const wanted = canonicalPhone(request.parentPhone);
-    const all = await this.prisma.guardian.findMany({ include: { children: true } });
-    let guardian = all.find((g) => canonicalPhone(g.phone) === wanted) ?? null;
+    // Scan id+phone only (phones are stored in mixed formats, so the canonical
+    // match still happens in JS — but without hydrating every family's children
+    // into memory on a public route).
+    const all: { id: string; phone: string }[] = await tx.guardian.findMany({ select: { id: true, phone: true } });
+    const matchId = all.find((g) => canonicalPhone(g.phone) === wanted)?.id ?? null;
+    let guardian = matchId
+      ? await tx.guardian.findUnique({ where: { id: matchId }, include: { children: true } })
+      : null;
     if (!guardian) {
-      guardian = await this.prisma.guardian.create({
+      guardian = await tx.guardian.create({
         data: {
           firstName: request.parentFirstName,
           lastName: request.parentLastName,
@@ -215,10 +221,10 @@ export class BookingsService {
     const ids: string[] = [];
     for (const c of request.children) {
       const match = roster.find(
-        (x) => x.active && x.firstName.toLowerCase() === c.firstName.toLowerCase() && x.lastName.toLowerCase() === c.lastName.toLowerCase(),
+        (x: any) => x.active && x.firstName.toLowerCase() === c.firstName.toLowerCase() && x.lastName.toLowerCase() === c.lastName.toLowerCase(),
       );
       if (match) { ids.push(match.id); continue; }
-      const child = await this.prisma.child.create({
+      const child = await tx.child.create({
         data: { guardianId: guardian.id, firstName: c.firstName, lastName: c.lastName, birthMonth: c.birthMonth, birthYear: c.birthYear },
       });
       roster.push(child); // so a repeated name in the same booking isn't created twice
@@ -233,7 +239,13 @@ export class BookingsService {
   async payRequest(id: string, stripePaymentIntentId: string) {
     const request = await this.prisma.bookingRequest.findUnique({ where: { id }, include: { children: true } });
     if (!request) throw new NotFoundException("Booking not found");
-    if (request.status === "confirmed") return { ok: true, bookedCount: request.children.length, alreadyConfirmed: true };
+    if (request.status === "confirmed") {
+      // Idempotent retry — but only for the intent that actually paid it, so
+      // this early-return can't be used as an unauthenticated confirmation
+      // oracle with an arbitrary string.
+      if (request.stripePaymentIntentId !== stripePaymentIntentId) throw new BadRequestException("Invalid payment reference");
+      return { ok: true, bookedCount: request.children.length, alreadyConfirmed: true };
+    }
     if (request.status !== "pending") throw new BadRequestException("This booking can't be completed");
 
     // Verify the card was actually CHARGED for the full amount, bound to this booking.
@@ -256,29 +268,17 @@ export class BookingsService {
 
     try {
       const paidAt = new Date();
-      const { guardianId, childIds } = await this.resolveFamily(request);
-      // Carry the ticked waiver acknowledgement onto the guardian — but never
-      // downgrade a current finger signature to an online tick.
-      const g = await this.prisma.guardian.findUnique({ where: { id: guardianId } });
-      const current = f.waiverVersion ?? 1;
-      if (g && g.waiverVersion !== current) {
-        await this.prisma.guardian.update({
-          where: { id: guardianId },
-          data: {
-            waiverAcceptedAt: request.waiverAcceptedAt ?? paidAt,
-            waiverVersion: request.waiverVersion ?? current,
-            waiverMethod: "online",
-            // Any old-version signature stays stored, but the acceptance on
-            // record is now the online acknowledgement of the current text.
-          },
-        });
-      }
-      // Capacity check + all N attendance rows + their request-child links happen
-      // in ONE serializable transaction, so concurrent auto-confirm bookings can't
-      // oversell the child:staff ratio, and a link failure rolls the whole thing
-      // back (leaving the catch's full refund correct).
+      // Family/child resolution + capacity check + all N attendance rows + their
+      // request-child links happen in ONE serializable transaction: a failed
+      // booking leaves NO trace on any family (fabricated children previously
+      // survived the auto-refund). The guardian's waiver is deliberately NOT
+      // touched here — an unauthenticated phone-number match must never satisfy
+      // a family's mandatory waiver. The request's ticked acknowledgement is
+      // carried onto the guardian at STAFF check-in instead
+      // (attendance.assertWaiverForCheckIn resolves it via the request link).
       await this.prisma.$transaction(
         async (tx) => {
+          const { childIds } = await this.resolveFamily(request, tx);
           // Same occupancy rule as everywhere else — including open drop-ins
           // when the window covers right now.
           const overlapping = await this.attendance.occupiedForWindow(tx as any, start, end);

@@ -5,12 +5,15 @@
 // opens the file in Excel/Sheets.
 //
 // A leading =, +, @, TAB or CR is the formula trigger; we prefix such cells
-// with an apostrophe so the spreadsheet treats them as text. `-` is excluded
-// when it introduces a number (e.g. a `-30.00` refund amount) so numeric
-// columns stay numeric for Xero's importer.
+// with an apostrophe so the spreadsheet treats them as text. A leading `-` is
+// ALSO a trigger — Excel evaluates `-2+3+cmd|' /C calc'!A0` as a formula even
+// though it starts with digits — so a minus is only allowed through when the
+// ENTIRE cell is a plain number (e.g. a `-30.00` refund amount), keeping
+// numeric columns numeric for Xero's importer.
 export function escapeCsvCell(value: string | number | null | undefined): string {
   const s = value === null || value === undefined ? "" : String(value);
-  const dangerous = /^[=+@\t\r]/.test(s) || (/^-/.test(s) && !/^-?\d/.test(s));
+  const plainNumber = /^-?\d+(\.\d+)?$/.test(s);
+  const dangerous = /^[=+@\t\r]/.test(s) || (/^-/.test(s) && !plainNumber);
   const guarded = dangerous ? `'${s}` : s;
   return /[",\n\r]/.test(guarded) ? `"${guarded.replace(/"/g, '""')}"` : guarded;
 }

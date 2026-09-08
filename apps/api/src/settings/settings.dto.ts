@@ -1,4 +1,4 @@
-import { ArrayMaxSize, IsArray, IsIn, IsInt, IsOptional, IsString, Matches, Max, MaxLength, Min } from "class-validator";
+import { ArrayMaxSize, IsArray, IsBoolean, IsIn, IsInt, IsOptional, IsString, Matches, Max, MaxLength, Min } from "class-validator";
 
 // Xero's Australian tax rates for sales lines.
 export const XERO_TAX_TYPES = ["GST Free Income", "GST on Income", "BAS Excluded"] as const;
@@ -63,6 +63,12 @@ export class UpdateSettingsDto {
   @IsString()
   @MaxLength(20000)
   waiverText?: string;
+
+  // True = a typo/wording tidy-up that should NOT bump the version (a bump
+  // requires every family to re-sign at their next check-in).
+  @IsOptional()
+  @IsBoolean()
+  waiverMinorEdit?: boolean;
 
   @IsOptional()
   @IsArray()
