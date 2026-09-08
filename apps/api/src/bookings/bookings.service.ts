@@ -88,9 +88,9 @@ export class BookingsService {
   private async spacesFree(start: Date, end: Date, excludeRequestId?: string): Promise<number> {
     const f = await this.settings.get();
     const [booked, pending] = await Promise.all([
-      this.prisma.attendance.count({
-        where: { status: { in: ["booked", "checked_in"] }, scheduledStart: { lt: end }, scheduledEnd: { gt: start } },
-      }),
+      // Includes open drop-ins when the window covers right now — walk-ins have
+      // null schedules and were previously invisible to this count.
+      this.attendance.occupiedForWindow(this.prisma, start, end),
       this.prisma.bookingRequest.count({
         where: {
           status: "pending",
@@ -279,9 +279,9 @@ export class BookingsService {
       // back (leaving the catch's full refund correct).
       await this.prisma.$transaction(
         async (tx) => {
-          const overlapping = await tx.attendance.count({
-            where: { status: { in: ["booked", "checked_in"] }, scheduledStart: { lt: end }, scheduledEnd: { gt: start } },
-          });
+          // Same occupancy rule as everywhere else — including open drop-ins
+          // when the window covers right now.
+          const overlapping = await this.attendance.occupiedForWindow(tx as any, start, end);
           if (overlapping + n > f.capacity) throw new ConflictException("__SESSION_FULL__");
           const serviceDate = DateTime.fromJSDate(start).setZone(f.timezone).startOf("day").toJSDate();
           for (let i = 0; i < request.children.length; i++) {

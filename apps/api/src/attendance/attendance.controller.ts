@@ -1,7 +1,9 @@
-import { Body, Controller, Get, Param, Post, Query, Req } from "@nestjs/common";
+import { Body, Controller, Get, Param, Post, Query, Req, UseGuards } from "@nestjs/common";
 import type { Request } from "express";
 import { AttendanceService } from "./attendance.service";
-import { BookAttendanceDto, CheckInDto, CheckOutDto, DropInDto, SetCourtDto, TakePaymentDto } from "./attendance.dto";
+import { BookAttendanceDto, CheckInDto, CheckOutDto, DropInDto, ForceCheckOutDto, SetCourtDto, TakePaymentDto } from "./attendance.dto";
+import { Roles } from "../auth/decorators";
+import { RolesGuard } from "../auth/guards";
 import { JwtPayload } from "../auth/jwt-payload.interface";
 
 function actor(req: Request): JwtPayload {
@@ -45,6 +47,20 @@ export class AttendanceController {
   @Post(":id/check-in")
   checkIn(@Param("id") id: string, @Body() dto: CheckInDto, @Req() req: Request) {
     return this.attendance.checkIn(actor(req), id, dto.court, dto.waiverSignature);
+  }
+
+  @Post(":id/no-show")
+  markNoShow(@Param("id") id: string) {
+    return this.attendance.markNoShow(id);
+  }
+
+  // Admin correction for a forgotten check-out — otherwise the stale row counts
+  // against capacity forever.
+  @Post(":id/force-checkout")
+  @UseGuards(RolesGuard)
+  @Roles("admin")
+  forceCheckOut(@Param("id") id: string, @Body() dto: ForceCheckOutDto, @Req() req: Request) {
+    return this.attendance.forceCheckOut(actor(req), id, dto.at);
   }
 
   @Post(":id/court")

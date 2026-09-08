@@ -61,6 +61,13 @@ export class CheckInDto {
   waiverSignature?: string;
 }
 
+export class ForceCheckOutDto {
+  // The corrected check-out time; defaults to the booked end / closing time.
+  @IsOptional()
+  @IsISO8601()
+  at?: string;
+}
+
 export class SetCourtDto {
   @IsOptional()
   @IsString()

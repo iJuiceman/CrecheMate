@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { useCallback, useEffect, useState } from "react";
 import { api } from "@/lib/api";
+import { useAuth } from "@/lib/auth";
 import { Attendance, Dashboard, Guardian, Roster, StaffRosterToday, money } from "@/lib/types";
 import StripeCardModal from "@/components/StripeCardModal";
 import CourtInput from "@/components/CourtInput";
@@ -26,6 +27,7 @@ function fmtTime(iso: string | null): string {
 }
 
 export default function DashboardPage() {
+  const { user } = useAuth();
   const [roster, setRoster] = useState<Roster | null>(null);
   const [stats, setStats] = useState<Dashboard | null>(null);
   const [staffToday, setStaffToday] = useState<StaffRosterToday | null>(null);
@@ -112,7 +114,7 @@ export default function DashboardPage() {
         {roster?.inCare.length ? (
           <div className="grid gap-3 md:grid-cols-2">
             {roster.inCare.map((a) => (
-              <InCareCard key={a.id} a={a} courts={roster.courts} rate={rate} busy={busy} act={act} />
+              <InCareCard key={a.id} a={a} courts={roster.courts} rate={rate} busy={busy} act={act} isAdmin={user?.role === "admin"} />
             ))}
           </div>
         ) : (
@@ -167,10 +169,13 @@ function estFee(checkInAt: string | null, rate: number): number {
 
 type Act = (key: string, fn: () => Promise<unknown>) => Promise<void>;
 
-function InCareCard({ a, courts, rate, busy, act }: { a: Attendance; courts: string[]; rate: number; busy: string | null; act: Act }) {
+function InCareCard({ a, courts, rate, busy, act, isAdmin }: { a: Attendance; courts: string[]; rate: number; busy: string | null; act: Act; isAdmin: boolean }) {
   const [editCourt, setEditCourt] = useState(false);
   const [court, setCourt] = useState(a.court ?? "");
   const disabled = busy === a.id;
+  // A check-in from a previous day is almost always a forgotten check-out —
+  // and it consumes a capacity slot until it's corrected.
+  const staleCheckIn = !!a.checkInAt && new Date(a.checkInAt).toDateString() !== new Date().toDateString();
 
   async function saveCourt() {
     await act(a.id, () => api.post(`/attendance/${a.id}/court`, { court: court.trim() || undefined }));
@@ -180,6 +185,16 @@ function InCareCard({ a, courts, rate, busy, act }: { a: Attendance; courts: str
   return (
     <div className="card">
       <ChildHeader a={a} />
+      {staleCheckIn && (
+        <p className="mt-2 rounded-md bg-amber-100 px-2 py-1 text-xs font-medium text-amber-800">
+          ⚠ Checked in on a previous day — probably a missed check-out. It still counts against capacity.
+          {isAdmin && (
+            <button className="ml-2 font-semibold underline" disabled={disabled} onClick={() => act(a.id, () => api.post(`/attendance/${a.id}/force-checkout`, {}))}>
+              Force check-out
+            </button>
+          )}
+        </p>
+      )}
       {/* Court — where to find the parent. Prominent because it matters most. */}
       <div className="mt-2 rounded-lg bg-teal-light/50 px-3 py-2">
         {editCourt ? (
@@ -248,6 +263,9 @@ function ExpectedCard({ a, courts, waiverVersion, busy, act }: { a: Attendance; 
       <div className="mt-3 flex gap-2">
         <button className="btn flex-1" disabled={disabled} onClick={() => (waiverOk ? checkIn() : setSignWaiver(true))}>Check in</button>
         <button className="btn-secondary" disabled={disabled} onClick={() => act(a.id, () => api.post(`/attendance/${a.id}/cancel`, {}))}>Cancel</button>
+        {a.scheduledEnd && new Date(a.scheduledEnd) < new Date() && (
+          <button className="btn-secondary" disabled={disabled} title="The booked window has passed and the child never arrived" onClick={() => act(a.id, () => api.post(`/attendance/${a.id}/no-show`, {}))}>No-show</button>
+        )}
       </div>
       {signWaiver && (
         <WaiverSignModal

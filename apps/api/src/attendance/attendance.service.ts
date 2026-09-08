@@ -95,11 +95,36 @@ export class AttendanceService {
     return this.prisma.attendance.count({ where: { status: "checked_in" } });
   }
 
-  private async assertCapacityForCheckIn() {
+  private async assertCapacityForCheckIn(client: { attendance: { count: (args: any) => Promise<number> } } = this.prisma) {
     const f = await this.facility();
-    if ((await this.currentlyInCare()) >= f.capacity) {
+    if ((await client.attendance.count({ where: { status: "checked_in" } })) >= f.capacity) {
       throw new ConflictException(`The creche is at capacity (${f.capacity}). Check a child out first.`);
     }
+  }
+
+  /**
+   * How many children occupy the creche across a window: scheduled overlaps
+   * (booked + checked-in bookings) PLUS — when the window includes right now —
+   * every open drop-in. Drop-ins have null schedules, so the scheduled-overlap
+   * predicate alone is blind to a room full of walk-ins (that blindness let
+   * the online form oversell the legally-regulated child:staff ratio).
+   */
+  async occupiedForWindow(
+    client: { attendance: { count: (args: any) => Promise<number> } },
+    start: Date,
+    end: Date,
+  ): Promise<number> {
+    const now = Date.now();
+    const includesNow = start.getTime() <= now && end.getTime() > now;
+    const [scheduled, openDropIns] = await Promise.all([
+      client.attendance.count({
+        where: { status: { in: ["booked", "checked_in"] }, scheduledStart: { lt: end }, scheduledEnd: { gt: start } },
+      }),
+      includesNow
+        ? client.attendance.count({ where: { status: "checked_in", scheduledStart: null } })
+        : Promise.resolve(0),
+    ]);
+    return scheduled + openDropIns;
   }
 
   /** Waivers are mandatory before care starts. If the child's guardian hasn't
@@ -230,14 +255,9 @@ export class AttendanceService {
     if ((end.getTime() - start.getTime()) / 3_600_000 > f.maxBookingHours) {
       throw new BadRequestException(`A booking can be at most ${f.maxBookingHours} hours long`);
     }
-    // Capacity across the booked window (booked + in-care overlaps).
-    const overlapping = await this.prisma.attendance.count({
-      where: {
-        status: { in: ["booked", "checked_in"] },
-        scheduledStart: { lt: end },
-        scheduledEnd: { gt: start },
-      },
-    });
+    // Capacity across the booked window (booked + in-care overlaps + open
+    // drop-ins when the window includes now).
+    const overlapping = await this.occupiedForWindow(this.prisma, start, end);
     if (overlapping >= f.capacity) {
       throw new ConflictException("The creche is fully booked for that time — try a different window.");
     }
@@ -279,13 +299,7 @@ export class AttendanceService {
   }) {
     const f = await this.facility();
     if (p.end <= p.start) throw new BadRequestException("End time must be after the start time");
-    const overlapping = await this.prisma.attendance.count({
-      where: {
-        status: { in: ["booked", "checked_in"] },
-        scheduledStart: { lt: p.end },
-        scheduledEnd: { gt: p.start },
-      },
-    });
+    const overlapping = await this.occupiedForWindow(this.prisma, p.start, p.end);
     if (overlapping >= f.capacity) {
       throw new ConflictException("The creche is fully booked for that time — can't confirm this request.");
     }
@@ -319,43 +333,129 @@ export class AttendanceService {
   async dropIn(actor: JwtPayload, dto: DropInDto) {
     const f = await this.facility();
     await this.loadChild(dto.childId);
-    await this.assertCapacityForCheckIn();
     await this.assertWaiverForCheckIn(dto.childId, dto.waiverSignature);
     const now = new Date();
     const { date } = this.dayBounds(f.timezone);
-    const created = await this.prisma.attendance.create({
-      data: {
-        childId: dto.childId,
-        serviceDate: date,
-        isDropIn: true,
-        status: "checked_in",
-        checkInAt: now,
-        checkedInById: actor.sub,
-        court: dto.court?.trim() || null,
-      },
-      include: this.childInclude,
-    });
-    return this.serialize(created);
+    try {
+      // Serializable: the capacity count, the duplicate check and the write are
+      // one atomic unit, so two iPads can't both take the last spot (and one
+      // child can't end up with two open attendances and two fees).
+      const created = await this.prisma.$transaction(
+        async (tx) => {
+          const open = await tx.attendance.findFirst({ where: { childId: dto.childId, status: "checked_in" }, select: { id: true } });
+          if (open) throw new BadRequestException("This child is already checked in");
+          await this.assertCapacityForCheckIn(tx as any);
+          return tx.attendance.create({
+            data: {
+              childId: dto.childId,
+              serviceDate: date,
+              isDropIn: true,
+              status: "checked_in",
+              checkInAt: now,
+              checkedInById: actor.sub,
+              court: dto.court?.trim() || null,
+            },
+            include: this.childInclude,
+          });
+        },
+        { isolationLevel: "Serializable" },
+      );
+      return this.serialize(created);
+    } catch (e: any) {
+      if (e?.code === "P2034") throw new ConflictException("Two check-ins collided — please try again.");
+      throw e;
+    }
   }
 
   /** Check in an existing booking on arrival (optionally recording the court). */
   async checkIn(actor: JwtPayload, id: string, court?: string, waiverSignature?: string) {
+    const f = await this.facility();
     const a = await this.prisma.attendance.findUnique({ where: { id } });
     if (!a) throw new NotFoundException("Attendance not found");
     if (a.status !== "booked") throw new BadRequestException("This booking can't be checked in");
-    await this.assertCapacityForCheckIn();
+    // Only today's bookings check in — a mis-tap on the calendar's future-day
+    // view was consuming bookings weeks out and billing from now.
+    const { start: dayStart, end: dayEnd } = this.dayBounds(f.timezone);
+    if (a.serviceDate < dayStart || a.serviceDate >= dayEnd) {
+      const when = DateTime.fromJSDate(a.serviceDate).setZone(f.timezone).toFormat("ccc d LLL");
+      throw new BadRequestException(`This booking is for ${when} — check it in on the day`);
+    }
+    await this.loadChild(a.childId); // re-checks the child is still active
     await this.assertWaiverForCheckIn(a.childId, waiverSignature);
-    const updated = await this.prisma.attendance.update({
-      where: { id },
+    try {
+      const updated = await this.prisma.$transaction(
+        async (tx) => {
+          await this.assertCapacityForCheckIn(tx as any);
+          const claim = await tx.attendance.updateMany({
+            where: { id, status: "booked" },
+            data: {
+              status: "checked_in",
+              checkInAt: new Date(),
+              checkedInById: actor.sub,
+              // Keep any court already set on the booking unless a new one is given.
+              ...(court !== undefined ? { court: court.trim() || null } : {}),
+            },
+          });
+          if (claim.count === 0) throw new BadRequestException("This booking can't be checked in");
+          return tx.attendance.findUnique({ where: { id }, include: this.childInclude });
+        },
+        { isolationLevel: "Serializable" },
+      );
+      return this.serialize(updated);
+    } catch (e: any) {
+      if (e?.code === "P2034") throw new ConflictException("Two check-ins collided — please try again.");
+      throw e;
+    }
+  }
+
+  /** Staff: mark a booked session whose window has passed as a no-show. Keeps
+   * the payment record intact (a prepaid no-show is a policy/refund decision
+   * for an admin, not an automatic write-off) but frees the slot from every
+   * roster and report ambiguity — noShows becomes measurable. */
+  async markNoShow(id: string) {
+    const f = await this.facility();
+    const a = await this.prisma.attendance.findUnique({ where: { id } });
+    if (!a) throw new NotFoundException("Attendance not found");
+    if (a.status !== "booked") throw new BadRequestException("Only a booking that never arrived can be marked no-show");
+    const windowEnd = a.scheduledEnd ?? this.dayBounds(f.timezone, DateTime.fromJSDate(a.serviceDate).setZone(f.timezone).toISODate() ?? undefined).end;
+    if (windowEnd.getTime() > Date.now()) throw new BadRequestException("The booked window hasn't finished yet");
+    const claim = await this.prisma.attendance.updateMany({ where: { id, status: "booked" }, data: { status: "no_show" } });
+    if (claim.count === 0) throw new BadRequestException("This booking was already resolved");
+    return { ok: true };
+  }
+
+  /** Admin: close out a stale check-in that was never checked out. A forgotten
+   * check-out otherwise counts against capacity FOREVER (the in-care clause is
+   * deliberately unbounded by date). The fee is billed to the corrected time —
+   * or stays frozen if it was already settled. */
+  async forceCheckOut(actor: JwtPayload, id: string, atIso?: string) {
+    const f = await this.facility();
+    const a = await this.prisma.attendance.findUnique({ where: { id } });
+    if (!a) throw new NotFoundException("Attendance not found");
+    if (a.status !== "checked_in" || !a.checkInAt) throw new BadRequestException("This child isn't checked in");
+    // Default the corrected check-out to the booked end, else the closing time
+    // of the day they were checked in.
+    let at = atIso ? new Date(atIso) : a.scheduledEnd ?? null;
+    if (!at || isNaN(at.getTime())) {
+      const day = DateTime.fromJSDate(a.serviceDate).setZone(f.timezone);
+      const [ch, cm] = f.closeTime.split(":").map(Number);
+      at = day.set({ hour: ch || 18, minute: cm || 0 }).toJSDate();
+    }
+    if (at <= a.checkInAt) at = new Date(a.checkInAt.getTime() + 30 * 60000);
+    const settled = a.paymentStatus === "paid" || a.paymentStatus === "waived";
+    const feeCents = settled ? a.feeCents : this.feeFor(a.checkInAt, at, f.hourlyRateCents);
+    const claim = await this.prisma.attendance.updateMany({
+      where: { id, status: "checked_in" },
       data: {
-        status: "checked_in",
-        checkInAt: new Date(),
-        checkedInById: actor.sub,
-        // Keep any court already set on the booking unless a new one is given.
-        ...(court !== undefined ? { court: court.trim() || null } : {}),
+        status: "checked_out",
+        checkOutAt: at,
+        checkedOutById: actor.sub,
+        feeCents,
+        notes: `${a.notes ? a.notes + " · " : ""}Force-checked-out by staff (missed check-out).`,
       },
-      include: this.childInclude,
     });
+    if (claim.count === 0) throw new BadRequestException("This child isn't checked in");
+    const updated = await this.prisma.attendance.findUnique({ where: { id }, include: this.childInclude });
     return this.serialize(updated);
   }
 
@@ -363,6 +463,7 @@ export class AttendanceService {
   async setCourt(id: string, court?: string) {
     const a = await this.prisma.attendance.findUnique({ where: { id } });
     if (!a) throw new NotFoundException("Attendance not found");
+    if (a.status !== "booked" && a.status !== "checked_in") throw new BadRequestException("This session has finished");
     const updated = await this.prisma.attendance.update({
       where: { id },
       data: { court: court?.trim() || null },

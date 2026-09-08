@@ -129,7 +129,7 @@ function ChildCard({ child, waiverOk, parentName, parentContacts, onChange, onNo
     try {
       await api.post("/attendance/drop-in", { childId: child.id, waiverSignature });
       onNotice(`${child.firstName} checked in.`);
-      if (waiverSignature) onChange(); // waiver status just changed — refresh
+      onChange(); // always refresh — a stale card invited duplicate check-ins
     } catch (e) {
       onError(e instanceof Error ? e.message : "Couldn't check in.");
     } finally {
