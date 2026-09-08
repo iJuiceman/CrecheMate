@@ -57,7 +57,7 @@ export class IntakeChildDto {
 
   @IsInt()
   @Min(2010)
-  @Max(2026)
+  @Max(new Date().getFullYear())
   birthYear: number;
 
   @IsOptional()

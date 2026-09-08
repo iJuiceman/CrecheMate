@@ -78,6 +78,7 @@ export interface Roster {
   courts: string[];
   openTime: string;
   closeTime: string;
+  timezone: string;
   waiverVersion: number;
   inCare: Attendance[];
   expected: Attendance[];
@@ -91,7 +92,7 @@ export interface RosterShift {
   startAt: string;
   endAt: string;
   notes: string | null;
-  user: { id: string; name: string; role: string } | null;
+  user: { id: string; name: string; role: string; status?: string } | null;
 }
 export interface StaffRosterWeek {
   from: string;

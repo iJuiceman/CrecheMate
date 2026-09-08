@@ -202,6 +202,7 @@ export class AttendanceService {
       // For the day-timeline view and the mandatory-waiver check-in gate.
       openTime: f.openTime,
       closeTime: f.closeTime,
+      timezone: f.timezone,
       waiverVersion: f.waiverVersion ?? 1,
       inCare,
       expected: all.filter((a) => a.status === "booked"),
@@ -273,8 +274,10 @@ export class AttendanceService {
   async book(dto: BookAttendanceDto) {
     const f = await this.facility();
     await this.loadChild(dto.childId);
-    const start = new Date(dto.startAt);
-    const end = new Date(dto.endAt);
+    // Offset-less ISO strings are interpreted in the FACILITY zone.
+    const start = DateTime.fromISO(dto.startAt, { zone: f.timezone }).toJSDate();
+    const end = DateTime.fromISO(dto.endAt, { zone: f.timezone }).toJSDate();
+    if (isNaN(start.getTime()) || isNaN(end.getTime())) throw new BadRequestException("Invalid start or end time");
     if (end <= start) throw new BadRequestException("End time must be after the start time");
     if ((end.getTime() - start.getTime()) / 3_600_000 > f.maxBookingHours) {
       throw new BadRequestException(`A booking can be at most ${f.maxBookingHours} hours long`);

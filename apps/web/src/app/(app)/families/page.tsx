@@ -5,6 +5,7 @@ import { useCallback, useEffect, useState } from "react";
 import { api } from "@/lib/api";
 import { EmergencyContact, Guardian } from "@/lib/types";
 import RelationshipSelect from "@/components/RelationshipSelect";
+import { isAuPhone } from "@/lib/phone";
 
 export default function FamiliesPage() {
   const [families, setFamilies] = useState<Guardian[]>([]);
@@ -73,6 +74,8 @@ function NewFamily({ onClose, onCreated }: { onClose: () => void; onCreated: () 
 
   async function submit() {
     if (!g.firstName || !g.lastName || !g.phone) return setError("Parent name and phone are required.");
+    if (!isAuPhone(g.phone)) return setError("Enter a valid Australian phone number for the parent.");
+    if (g2.phone && !isAuPhone(g2.phone)) return setError("Enter a valid Australian phone number for the second parent.");
     if (!child.firstName || !child.lastName) return setError("The child's name is required.");
     const validContacts = contacts.filter((c) => c.name.trim() && c.phone.trim());
     if (contacts.some((c) => c.name.trim() && !c.phone.trim())) return setError("Each added emergency contact needs a phone number.");
@@ -83,10 +86,12 @@ function NewFamily({ onClose, onCreated }: { onClose: () => void; onCreated: () 
         guardian: {
           ...g, lastName: g.lastName, email: g.email || undefined, addressLine: g.addressLine || undefined, suburb: g.suburb || undefined, postcode: g.postcode || undefined, relationship: g.relationship || undefined,
           secondFirstName: g2.firstName || undefined,
-          secondLastName: g2.lastName || undefined,
+          secondLastName: g2.firstName ? g2.lastName || undefined : undefined,
           secondRelationship: g2.firstName ? g2.relationship || undefined : undefined,
-          secondPhone: g2.phone || undefined,
-          secondEmail: g2.email || undefined,
+          // No nameless orphan contact details: second-parent phone/email only
+          // ride along when a second parent is actually named.
+          secondPhone: g2.firstName && g2.phone ? g2.phone : undefined,
+          secondEmail: g2.firstName && g2.email ? g2.email : undefined,
         },
         child: {
           firstName: child.firstName,

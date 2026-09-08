@@ -54,8 +54,10 @@ export class BookingsService {
   /** Validate a requested window against opening hours and the clock. */
   private async validateWindow(startAt: string, endAt: string) {
     const f = await this.settings.get();
-    const start = DateTime.fromISO(startAt);
-    const end = DateTime.fromISO(endAt);
+    // Offset-less ISO strings are interpreted in the FACILITY zone, not the
+    // server's (a naive client string was previously shifted by the UTC offset).
+    const start = DateTime.fromISO(startAt, { zone: f.timezone });
+    const end = DateTime.fromISO(endAt, { zone: f.timezone });
     if (!start.isValid || !end.isValid) throw new BadRequestException("Invalid start or end time");
     if (end <= start) throw new BadRequestException("The end time must be after the start time");
     if (start < DateTime.now()) throw new BadRequestException("Please choose a time in the future");

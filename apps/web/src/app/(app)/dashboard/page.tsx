@@ -8,6 +8,7 @@ import { Attendance, Dashboard, Guardian, Roster, StaffRosterToday, money } from
 import StripeCardModal from "@/components/StripeCardModal";
 import CourtInput from "@/components/CourtInput";
 import WaiverSignModal from "@/components/WaiverSignModal";
+import { minutesInTz } from "@/lib/tz";
 
 interface PaymentIntentResponse {
   id: string;
@@ -163,8 +164,11 @@ export default function DashboardPage() {
 
 function estFee(checkInAt: string | null, rate: number): number {
   if (!checkInAt) return 0;
-  const hours = (Date.now() - new Date(checkInAt).getTime()) / 3_600_000;
-  return Math.round(hours * rate);
+  // Mirror the API's billing exactly: rounded UP to the half hour — the old
+  // per-minute pro-rata under-quoted parents by up to 38% at the desk.
+  const hours = Math.max(0, (Date.now() - new Date(checkInAt).getTime()) / 3_600_000);
+  const billed = Math.ceil(hours * 2) / 2;
+  return Math.round(billed * rate);
 }
 
 type Act = (key: string, fn: () => Promise<unknown>) => Promise<void>;
@@ -293,29 +297,33 @@ function ExpectedCard({ a, courts, waiverVersion, busy, act }: { a: Attendance; 
 /** Horizontal day timeline: one bar per child, open→close axis, "now" line.
  * Booked = outline, in care = solid teal, finished = grey. */
 function TodayTimeline({ roster }: { roster: Roster }) {
-  const [openH, openM] = roster.openTime.split(":").map(Number);
-  const [closeH, closeM] = roster.closeTime.split(":").map(Number);
-  const dayStart = new Date(); dayStart.setHours(openH || 7, openM || 0, 0, 0);
-  const dayEnd = new Date(); dayEnd.setHours(closeH || 18, closeM || 0, 0, 0);
-  const span = Math.max(1, dayEnd.getTime() - dayStart.getTime());
-  const pct = (iso: string | null, fallback: Date) => {
-    const t = iso ? new Date(iso).getTime() : fallback.getTime();
-    return Math.min(100, Math.max(0, ((t - dayStart.getTime()) / span) * 100));
+  // The axis runs in the FACILITY's wall clock (open→close), so an interstate
+  // browser doesn't skew every bar; `|| 7` was also swallowing a real "00:00".
+  const tz = roster.timezone;
+  const parseHM = (t: string, fallback: number) => {
+    const [h, m] = t.split(":").map(Number);
+    return Number.isFinite(h) ? h * 60 + (Number.isFinite(m) ? m : 0) : fallback * 60;
   };
-  const now = new Date();
-  const nowPct = ((now.getTime() - dayStart.getTime()) / span) * 100;
+  const openMin = parseHM(roster.openTime, 7);
+  const closeMinRaw = parseHM(roster.closeTime, 18);
+  const closeMin = closeMinRaw > openMin ? closeMinRaw : openMin + 60; // misconfig guard
+  const span = closeMin - openMin;
+  const minsOf = (iso: string | null, fallback: number) => (iso ? minutesInTz(iso, tz) : fallback);
+  const pctOfMin = (m: number) => Math.min(100, Math.max(0, ((m - openMin) / span) * 100));
+  const nowMin = minutesInTz(new Date(), tz);
+  const nowPct = ((nowMin - openMin) / span) * 100;
 
   const rows = [...roster.inCare, ...roster.expected, ...roster.finished]
     .map((a) => {
-      const from = a.checkInAt ?? a.scheduledStart;
-      const to = a.checkOutAt ?? a.scheduledEnd;
-      return { a, left: pct(from, dayStart), right: pct(to, a.status === "checked_in" ? now : dayEnd) };
+      const from = minsOf(a.checkInAt ?? a.scheduledStart, openMin);
+      const to = minsOf(a.checkOutAt ?? a.scheduledEnd, a.status === "checked_in" ? nowMin : closeMin);
+      return { a, left: pctOfMin(from), right: pctOfMin(to) };
     })
     .sort((x, y) => x.left - y.left);
 
   const hours: number[] = [];
-  for (let h = Math.ceil(openH + (openM ? 1 : 0)); h <= closeH; h++) hours.push(h);
-  const hourLabel = (h: number) => `${((h + 11) % 12) + 1}${h < 12 ? "am" : "pm"}`;
+  for (let h = Math.ceil(openMin / 60); h * 60 <= closeMin; h++) hours.push(h);
+  const hourLabel = (h: number) => `${((h + 11) % 12) + 1}${h % 24 < 12 ? "am" : "pm"}`;
 
   return (
     <div className="card overflow-x-auto">
@@ -323,7 +331,7 @@ function TodayTimeline({ roster }: { roster: Roster }) {
         {/* Hour ruler */}
         <div className="relative mb-1 h-4 text-[10px] text-ink/40">
           {hours.map((h) => {
-            const p = ((new Date(dayStart).setHours(h, 0, 0, 0) - dayStart.getTime()) / span) * 100;
+            const p = pctOfMin(h * 60);
             return p >= 0 && p <= 100 ? <span key={h} className="absolute -translate-x-1/2" style={{ left: `${p}%` }}>{hourLabel(h)}</span> : null;
           })}
         </div>
@@ -331,7 +339,7 @@ function TodayTimeline({ roster }: { roster: Roster }) {
           {/* Hour gridlines + now line */}
           <div className="pointer-events-none absolute inset-0">
             {hours.map((h) => {
-              const p = ((new Date(dayStart).setHours(h, 0, 0, 0) - dayStart.getTime()) / span) * 100;
+              const p = pctOfMin(h * 60);
               return p >= 0 && p <= 100 ? <div key={h} className="absolute bottom-0 top-0 border-l border-line/60" style={{ left: `${p}%` }} /> : null;
             })}
             {nowPct >= 0 && nowPct <= 100 && <div className="absolute bottom-0 top-0 z-10 border-l-2 border-coral" style={{ left: `${nowPct}%` }} />}
@@ -402,9 +410,13 @@ function PaymentRow({ attendanceId, feeCents, busyKey, onDone, onBusy }: { atten
   const [err, setErr] = useState<string | null>(null);
   // Set when a real Stripe intent needs the card collected in Elements.
   const [card, setCard] = useState<{ clientSecret: string; publishableKey: string; intentId: string } | null>(null);
+  // The card was CHARGED but recording failed (network blip) — keep the intent
+  // so "Retry" re-records the SAME charge instead of minting a second one.
+  const [chargedIntent, setChargedIntent] = useState<string | null>(null);
 
   async function record(body: Record<string, unknown>) {
     await api.post(`/attendance/${attendanceId}/payment`, body);
+    setChargedIntent(null);
     onDone();
   }
 
@@ -434,6 +446,29 @@ function PaymentRow({ attendanceId, feeCents, busyKey, onDone, onBusy }: { atten
   }
 
   const disabled = busyKey === attendanceId;
+
+  // Recovery path for a charged-but-unrecorded card payment.
+  if (chargedIntent) {
+    return (
+      <div className="mt-3 rounded-lg bg-amber-100 px-3 py-2">
+        <p className="text-xs font-medium text-amber-800">The card WAS charged {money(feeCents)}, but recording it failed. Don&apos;t charge again —</p>
+        <button
+          className="btn mt-2 px-3 py-1.5 text-xs"
+          disabled={disabled}
+          onClick={async () => {
+            onBusy(attendanceId); setErr(null);
+            try { await record({ method: "online", stripePaymentIntentId: chargedIntent }); }
+            catch (e) { setErr(e instanceof Error ? e.message : "Still couldn't record it — try again."); }
+            finally { onBusy(null); }
+          }}
+        >
+          Retry recording this payment
+        </button>
+        {err && <p className="mt-1 text-xs text-coral">{err}</p>}
+      </div>
+    );
+  }
+
   return (
     <div className="mt-3">
       <p className="label">Take {money(feeCents)}</p>
@@ -454,7 +489,10 @@ function PaymentRow({ attendanceId, feeCents, busyKey, onDone, onBusy }: { atten
             try {
               await record({ method: "online", stripePaymentIntentId: card.intentId });
             } catch (e) {
-              setErr(e instanceof Error ? e.message : "Charged, but recording failed — refresh.");
+              // The charge went through — keep the intent id so Retry records
+              // it instead of charging the card again.
+              setChargedIntent(card.intentId);
+              setErr(e instanceof Error ? e.message : "Charged, but recording failed.");
             } finally {
               setCard(null);
             }

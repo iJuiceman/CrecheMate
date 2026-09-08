@@ -18,7 +18,12 @@ export default function RelationshipSelect({
   className?: string;
 }) {
   const known = (RELATIONSHIPS as readonly string[]).includes(value);
-  const [otherMode, setOtherMode] = useState(!!value && !known);
+  // Derived + a sticky user override: rows in the contact forms are keyed by
+  // index, so state initialised once went stale when a row above was deleted
+  // (a surviving "Other" value silently vanished from the UI).
+  const [forcedOther, setForcedOther] = useState(false);
+  const otherMode = forcedOther || (!!value && !known);
+  const setOtherMode = setForcedOther;
 
   return (
     <div className="flex flex-col gap-1">

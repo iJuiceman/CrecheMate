@@ -45,7 +45,7 @@ export class IntakeService {
       waiverText: s?.waiverText?.trim() ? s.waiverText : DEFAULT_WAIVER,
       waiverVersion: s?.waiverVersion ?? 1,
       // The form offers these year options; kept here so it stays in one place.
-      yearRange: { from: 2010, to: 2026 },
+      yearRange: { from: 2010, to: new Date().getFullYear() },
     };
   }
 

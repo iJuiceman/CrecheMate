@@ -11,9 +11,13 @@ export class UpdateSettingsDto {
   @MaxLength(120)
   name?: string;
 
+  // A typo'd zone makes every dayBounds() call yield Invalid Date and 500s
+  // the whole facility (roster, check-in, reports) — validate against the
+  // runtime's IANA list.
   @IsOptional()
   @IsString()
   @MaxLength(60)
+  @IsIn(Intl.supportedValuesOf("timeZone"), { message: "timezone must be a valid IANA zone, e.g. Australia/Sydney" })
   timezone?: string;
 
   @IsOptional()

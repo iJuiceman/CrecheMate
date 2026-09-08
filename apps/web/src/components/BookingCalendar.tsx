@@ -11,7 +11,7 @@ const MONTHS = ["January", "February", "March", "April", "May", "June", "July", 
 const isoLocal = (d: Date) => d.toLocaleDateString("en-CA");
 const todayIso = () => new Date().toLocaleDateString("en-CA");
 
-// Teal heat fill scaled against a sensible reference (busiest day, capacity, or a
+// Brand-red heat fill (Racqueteer palette) scaled against a sensible reference (busiest day, capacity, or a
 // floor of 4) so a quiet month isn't painted dark.
 function heat(total: number, scale: number): { bg: string; fg: string } {
   if (total <= 0) return { bg: "transparent", fg: "#14231F" };

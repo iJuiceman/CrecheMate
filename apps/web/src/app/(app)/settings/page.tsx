@@ -53,12 +53,16 @@ export default function SettingsPage() {
   // Courts save on their own the moment you add/remove one, so they're always
   // ready at check-in without needing the main Save.
   const persistCourts = async (next: string[]) => {
+    const previous = s.courts ?? [];
     setS({ ...s, courts: next });
     setError(null);
     try {
       const updated = await api.patch<Settings>("/settings", { courts: next });
       setS(updated);
     } catch (e) {
+      // Roll the optimistic change back — a court that failed to delete must
+      // not LOOK deleted (a later save would then commit it for real).
+      setS((cur) => (cur ? { ...cur, courts: previous } : cur));
       setError(e instanceof Error ? e.message : "Couldn't save courts.");
     }
   };
@@ -69,7 +73,10 @@ export default function SettingsPage() {
     persistCourts([...courts, name]);
     setNewCourt("");
   };
-  const removeCourt = (i: number) => persistCourts(courts.filter((_, j) => j !== i));
+  const removeCourt = (i: number) => {
+    if (!confirm(`Remove "${courts[i]}" from the court list? It disappears from every check-in dropdown.`)) return;
+    persistCourts(courts.filter((_, j) => j !== i));
+  };
 
   return (
     <div className="p-6">
@@ -286,7 +293,7 @@ function PaymentsSection({ settings, onChange }: { settings: Settings; onChange:
           </div>
           <div>
             <label className="label">Secret key (sk_…)</label>
-            <input className="field font-mono" placeholder="sk_live_… or sk_test_…" value={secretKey} onChange={(e) => setSecretKey(e.target.value)} autoComplete="off" spellCheck={false} />
+            <input type="password" className="field font-mono" placeholder="sk_live_…" value={secretKey} onChange={(e) => setSecretKey(e.target.value)} autoComplete="off" spellCheck={false} />
           </div>
           <div>
             <label className="label">Publishable key (pk_…)</label>

@@ -27,6 +27,10 @@ export class ReportsService {
     };
     const startD = (from ? parse(from, "from") : today.minus({ days: 29 })).startOf("day");
     const endExclusive = (to ? parse(to, "to") : today).startOf("day").plus({ days: 1 });
+    if (endExclusive <= startD) throw new BadRequestException("The end date must not be before the start date");
+    // The chart axis was already capped at 400 days — cap the DB range too, so
+    // a 1970-2100 request can't pull every attendance row ever into memory.
+    if (endExclusive.diff(startD, "days").days > 400) throw new BadRequestException("Reports cover at most 400 days at a time");
     const days: string[] = [];
     for (let d = startD; d < endExclusive && days.length < 400; d = d.plus({ days: 1 })) {
       days.push(d.toISODate()!);

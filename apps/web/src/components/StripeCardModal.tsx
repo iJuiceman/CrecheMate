@@ -30,20 +30,24 @@ interface Props {
  *  requires_capture); both are treated as success. */
 export default function StripeCardModal({ clientSecret, publishableKey, feeCents, title, subtitle, submitLabel, onConfirmed, onClose }: Props) {
   const stripePromise = useMemo(() => stripeFor(publishableKey), [publishableKey]);
+  // A stray backdrop tap mid-confirmation would unmount the form AFTER the
+  // charge was sent — an orphaned charge with no recording call. Block the
+  // backdrop while a confirmation is in flight (the Cancel button already is).
+  const confirming = useMemo(() => ({ current: false }), []);
   return (
-    <div className="fixed inset-0 z-[60] grid place-items-center bg-ink/40 p-4" onClick={onClose}>
+    <div className="fixed inset-0 z-[60] grid place-items-center bg-ink/40 p-4" onClick={() => { if (!confirming.current) onClose(); }}>
       <div className="w-full max-w-md rounded-card bg-white p-5 shadow-xl" onClick={(e) => e.stopPropagation()}>
         <h2 className="font-display text-lg font-bold text-ink">{title ?? `Card payment · ${money(feeCents)}`}</h2>
         <p className="mt-1 text-sm text-ink/60">{subtitle ?? "Enter the card details to charge the fee."}</p>
         <Elements stripe={stripePromise} options={{ clientSecret, appearance: { theme: "stripe" } }}>
-          <CardForm feeCents={feeCents} submitLabel={submitLabel} onConfirmed={onConfirmed} onClose={onClose} />
+          <CardForm feeCents={feeCents} submitLabel={submitLabel} onConfirmed={onConfirmed} onClose={onClose} confirming={confirming} />
         </Elements>
       </div>
     </div>
   );
 }
 
-function CardForm({ feeCents, submitLabel, onConfirmed, onClose }: { feeCents: number; submitLabel?: string; onConfirmed: () => void; onClose: () => void }) {
+function CardForm({ feeCents, submitLabel, onConfirmed, onClose, confirming }: { feeCents: number; submitLabel?: string; onConfirmed: () => void; onClose: () => void; confirming: { current: boolean } }) {
   const stripe = useStripe();
   const elements = useElements();
   const [busy, setBusy] = useState(false);
@@ -53,6 +57,7 @@ function CardForm({ feeCents, submitLabel, onConfirmed, onClose }: { feeCents: n
     e.preventDefault();
     if (!stripe || !elements) return;
     setBusy(true);
+    confirming.current = true;
     setErr(null);
     const { error, paymentIntent } = await stripe.confirmPayment({
       elements,
@@ -62,6 +67,7 @@ function CardForm({ feeCents, submitLabel, onConfirmed, onClose }: { feeCents: n
     if (error) {
       setErr(error.message ?? "The card was declined.");
       setBusy(false);
+      confirming.current = false;
       return;
     }
     // "succeeded" = charged (immediate capture); "requires_capture" = card
@@ -72,6 +78,7 @@ function CardForm({ feeCents, submitLabel, onConfirmed, onClose }: { feeCents: n
     }
     setErr(`Payment status: ${paymentIntent?.status ?? "unknown"}. Try again.`);
     setBusy(false);
+    confirming.current = false;
   }
 
   return (

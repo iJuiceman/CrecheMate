@@ -8,6 +8,7 @@ import { ChildFull, EmergencyContact, Guardian, Settings } from "@/lib/types";
 import CourtInput from "@/components/CourtInput";
 import WaiverSignModal from "@/components/WaiverSignModal";
 import RelationshipSelect from "@/components/RelationshipSelect";
+import { isAuPhone } from "@/lib/phone";
 
 export default function FamilyDetail({ params }: { params: { id: string } }) {
   const router = useRouter();
@@ -240,6 +241,8 @@ function GuardianForm({ family, onClose, onSaved }: { family: Guardian; onClose:
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState<string | null>(null);
   async function save() {
+    if (!isAuPhone(g.phone)) return setErr("Enter a valid Australian phone number for the parent.");
+    if (g2.firstName && g2.phone && !isAuPhone(g2.phone)) return setErr("Enter a valid Australian phone number for the second parent.");
     setBusy(true); setErr(null);
     try {
       await api.patch(`/families/${family.id}`, {

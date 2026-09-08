@@ -1,4 +1,4 @@
-import { Injectable } from "@nestjs/common";
+import { BadRequestException, Injectable } from "@nestjs/common";
 import { PrismaService } from "../prisma/prisma.service";
 import { PaymentsService } from "../payments/payments.service";
 import { UpdateSettingsDto } from "./settings.dto";
@@ -40,6 +40,14 @@ export class SettingsService {
   async update(dto: UpdateSettingsDto) {
     const current = await this.get();
     const { waiverMinorEdit, ...fields } = dto;
+    // Lowering capacity below the number of children in the room right now
+    // just produces confusing "check a child out first" errors at the desk.
+    if (dto.capacity !== undefined) {
+      const inCare = await this.prisma.attendance.count({ where: { status: "checked_in" } });
+      if (dto.capacity < inCare) {
+        throw new BadRequestException(`${inCare} children are in care right now — capacity can't be set below that`);
+      }
+    }
     // Bump the waiver version whenever its wording actually changes, so each
     // parent's signature stays tied to the text they saw. A version bump makes
     // EVERY family re-sign at their next check-in, so:

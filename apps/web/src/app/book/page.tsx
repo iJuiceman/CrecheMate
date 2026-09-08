@@ -58,6 +58,9 @@ export default function BookPage() {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [card, setCard] = useState<RequestResp | null>(null);
+  // Charged-but-unfinalised handles (recording failed after a real charge).
+  const [pendingFinalise, setPendingFinalise] = useState<{ requestId: string; paymentIntentId: string; feeCents: number } | null>(null);
+  const [chargedTotalCents, setChargedTotalCents] = useState<number | null>(null);
   const [confirmedCount, setConfirmedCount] = useState(1);
 
   useEffect(() => {
@@ -74,7 +77,9 @@ export default function BookPage() {
     return d.toLocaleDateString("en-CA");
   }, [cfg]);
 
-  const iso = (d: string, t: string) => new Date(`${d}T${t}:00`).toISOString();
+  // Naive (offset-less) wall-clock string — the API interprets it in the
+  // FACILITY timezone, so a travelling parent's device zone can't shift it.
+  const iso = (d: string, t: string) => `${d}T${t}:00`;
 
   const setChild = (i: number, patch: Partial<ChildForm>) => setChildren(children.map((c, j) => (j === i ? { ...c, ...patch } : c)));
   const addChild = () => setChildren((cs) => (cs.length < MAX_CHILDREN ? [...cs, emptyChild()] : cs));
@@ -126,6 +131,7 @@ export default function BookPage() {
       if (req.testMode || !req.publishableKey) {
         // No Stripe account linked — the stub auto-charges and confirms.
         await api.post(`/bookings/${req.requestId}/pay`, { stripePaymentIntentId: req.paymentIntentId });
+        setChargedTotalCents(req.feeCents);
         setStep("done"); window.scrollTo(0, 0);
       } else {
         setCard(req); // collect + charge the card, then finalise the booking
@@ -147,7 +153,7 @@ export default function BookPage() {
           <div className="mx-auto mb-4 grid h-20 w-20 place-items-center rounded-3xl bg-teal-light text-4xl">✅</div>
           <h1 className="font-display text-3xl font-bold text-ink">Booking confirmed</h1>
           <p className="mt-3 text-lg text-ink/70">
-            All set! You&apos;ve been charged <b>{money(perChild * confirmedCount)}</b> for <b>{confirmedCount}</b> {confirmedCount === 1 ? "child" : "children"} on <b>{new Date(`${date}T${start}`).toLocaleDateString("en-AU", { weekday: "long", day: "numeric", month: "long" })}</b>, {start}–{end}.
+            All set! You&apos;ve been charged <b>{money(chargedTotalCents ?? perChild * confirmedCount)}</b> for <b>{confirmedCount}</b> {confirmedCount === 1 ? "child" : "children"} on <b>{new Date(`${date}T${start}`).toLocaleDateString("en-AU", { weekday: "long", day: "numeric", month: "long" })}</b>, {start}–{end}.
           </p>
           <p className="mt-2 text-ink/60">Your place is secured. Please make sure your court booking matches this time. See you at {cfg.facilityName}!</p>
           <button className="btn mt-8 px-6 py-3 text-base" onClick={() => { setStep("session"); setQuote(null); setParent({ firstName: "", lastName: "", phone: "", email: "" }); setChildren([emptyChild()]); setNotes(""); setDate(""); setError(null); }}>
@@ -159,7 +165,7 @@ export default function BookPage() {
   }
 
   const years: number[] = [];
-  for (let y = 2026; y >= 2010; y--) years.push(y);
+  for (let y = new Date().getFullYear(); y >= 2010; y--) years.push(y);
   const estPerChild = date && start && end ? Math.max(0, Math.round(((new Date(`${date}T${end}`).getTime() - new Date(`${date}T${start}`).getTime()) / 3_600_000) * cfg.hourlyRateCents)) : 0;
 
   return (
@@ -301,15 +307,50 @@ export default function BookPage() {
           onConfirmed={async () => {
             try {
               await api.post(`/bookings/${card.requestId}/pay`, { stripePaymentIntentId: card.paymentIntentId });
+              setChargedTotalCents(card.feeCents);
               setCard(null);
               setStep("done");
               window.scrollTo(0, 0);
             } catch (e) {
-              setError(e instanceof Error ? e.message : "Payment taken, but couldn't finalise — please contact us.");
+              // The card WAS charged — keep the handles so Retry finalises the
+              // SAME payment. Without this, re-pressing "Pay & book" minted a
+              // fresh intent and charged the card a second time.
+              setPendingFinalise({ requestId: card.requestId, paymentIntentId: card.paymentIntentId, feeCents: card.feeCents });
+              setError(e instanceof Error ? e.message : "Payment taken, but the booking couldn't be finalised.");
               setCard(null);
             }
           }}
         />
+      )}
+
+      {pendingFinalise && (
+        <div className="fixed inset-x-0 bottom-0 z-50 border-t border-line bg-white p-4 shadow-xl">
+          <div className="mx-auto flex max-w-xl flex-wrap items-center gap-3">
+            <p className="flex-1 text-sm text-ink">
+              <b>Your card was charged {money(pendingFinalise.feeCents)}</b> but the booking didn&apos;t finalise. Don&apos;t pay again — press retry.
+            </p>
+            <button
+              className="btn"
+              disabled={busy}
+              onClick={async () => {
+                setBusy(true); setError(null);
+                try {
+                  await api.post(`/bookings/${pendingFinalise.requestId}/pay`, { stripePaymentIntentId: pendingFinalise.paymentIntentId });
+                  setChargedTotalCents(pendingFinalise.feeCents);
+                  setPendingFinalise(null);
+                  setStep("done");
+                  window.scrollTo(0, 0);
+                } catch (e) {
+                  setError(e instanceof Error ? e.message : "Still couldn't finalise — please contact the centre; your payment will be refunded if the booking can't be completed.");
+                } finally {
+                  setBusy(false);
+                }
+              }}
+            >
+              Retry finalising
+            </button>
+          </div>
+        </div>
       )}
     </div>
   );
