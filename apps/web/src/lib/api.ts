@@ -25,6 +25,13 @@ async function request<T>(path: string, options: { method?: string; body?: unkno
   const text = await res.text();
   const data = text ? JSON.parse(text) : null;
   if (!res.ok) {
+    // A 401 on an authenticated call means the session is dead (expired token
+    // or a suspended account) — without this, the app stays rendered and every
+    // action fails with a generic banner while the polls swallow it silently.
+    if (res.status === 401 && token && !path.startsWith("/auth/login") && !path.startsWith("/auth/change-password")) {
+      clearToken();
+      if (typeof window !== "undefined") window.location.href = "/login";
+    }
     const msg = Array.isArray(data?.message) ? data.message.join(", ") : data?.message;
     throw new Error(msg || `Request failed (${res.status})`);
   }

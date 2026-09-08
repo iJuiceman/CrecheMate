@@ -12,7 +12,7 @@ const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 const REDACT_KEYS = new Set([
   "password", "currentpassword", "newpassword", "temporarypassword",
   "secretkey", "publishablekey",
-  "medicalnotes", "waiversignature", "signature",
+  "medicalnotes", "waiversignature", "signature", "notes",
 ]);
 // Per-path extras: incident details are health data (encrypted in incidents).
 const REDACT_BY_PATH: { prefix: string; keys: string[] }[] = [
@@ -62,6 +62,11 @@ export class AuditService implements OnModuleInit, OnModuleDestroy {
     if (method === "GET" && /^\/families\/[0-9a-f-]{36}$/i.test(path)) return true;
     // The families list is a facility-wide export of guardian/child PII.
     if (method === "GET" && path === "/families") return true;
+    // Bulk decrypts: the incident list returns decrypted injury narratives, and
+    // the day view decrypts every attending child's medical notes. (The polled
+    // /attendance/roster and /attendance/dashboard stay unaudited — noise.)
+    if (method === "GET" && path === "/incidents") return true;
+    if (method === "GET" && path === "/attendance") return true;
     return false;
   }
 
@@ -78,8 +83,17 @@ export class AuditService implements OnModuleInit, OnModuleDestroy {
       // Unauthenticated or 401/403 requests still leave an accountability row
       // (who/what/when/status/ip) but never persist their attacker-controlled
       // body/query — that's what stopped the audit table being a flood target.
+      // Login is @Public (req.user never populated), which used to leave every
+      // login row anonymous with no way to tell which account was targeted.
+      // The controller stamps the attempted username; it is NOT attacker-shaped
+      // beyond an 80-char lower-cased string, and it's exactly what an
+      // investigation needs.
+      const loginUsername = (req as Request & { auditLoginUsername?: string }).auditLoginUsername;
+
       let detail: Record<string, unknown> | undefined;
-      if (user && status !== 401 && status !== 403) {
+      if (loginUsername) {
+        detail = { username: loginUsername };
+      } else if (user && status !== 401 && status !== 403) {
         const d: Record<string, unknown> = {};
         const body = this.sanitize(req.body, path);
         if (body && Object.keys(body).length) d.body = body;
@@ -95,7 +109,8 @@ export class AuditService implements OnModuleInit, OnModuleDestroy {
         .create({
           data: {
             actorId: user?.sub ?? null,
-            actorUsername: user?.username ?? null,
+            // A SUCCESSFUL login row carries the account it signed in as.
+            actorUsername: user?.username ?? (loginUsername && status < 400 ? loginUsername : null),
             actorRole: user?.role ?? null,
             ip: req.ip ?? null,
             userAgent: (req.headers["user-agent"] ?? "").toString().slice(0, 300) || null,

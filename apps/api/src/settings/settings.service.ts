@@ -29,7 +29,7 @@ export class SettingsService {
    */
   async publicView() {
     const s = await this.get();
-    const { stripeSecretKeyEncrypted, ...safe } = s;
+    const { stripeSecretKeyEncrypted, encryptionCanary, ...safe } = s;
     return {
       ...safe,
       stripeConfigured: !!stripeSecretKeyEncrypted,

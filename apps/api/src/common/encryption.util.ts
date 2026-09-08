@@ -30,3 +30,22 @@ export function decryptField(stored: string): string {
     return ""; // corrupt/legacy ciphertext must never crash a read
   }
 }
+
+// Shown wherever a stored encrypted value can't be read. A silent "" is
+// catastrophic for the medical path — a corrupt allergy note must NEVER read
+// as "no allergies" to the educator on the floor.
+export const DECRYPT_FAILED_SENTINEL = "⚠ Unreadable record — ask an admin to check the encryption key";
+
+/** Like decryptField, but a failure yields a loud sentinel instead of "".
+ * Use for human-read fields (medical notes, incident details); keep plain
+ * decryptField for machine-checked values (the Stripe key). */
+export function decryptFieldOrSentinel(stored: string): string {
+  try {
+    const [ivHex, tagHex, dataHex] = stored.split(":");
+    const decipher = createDecipheriv("aes-256-gcm", getKey(), Buffer.from(ivHex, "hex"));
+    decipher.setAuthTag(Buffer.from(tagHex, "hex"));
+    return Buffer.concat([decipher.update(Buffer.from(dataHex, "hex")), decipher.final()]).toString("utf8");
+  } catch {
+    return DECRYPT_FAILED_SENTINEL;
+  }
+}

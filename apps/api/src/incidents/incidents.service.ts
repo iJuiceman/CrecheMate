@@ -84,7 +84,7 @@ export class IncidentsService {
       reportedBy: row.reportedBy,
       reporterName: row.reporterName,
       types: row.types,
-      description: row.descriptionEncrypted ? decryptField(row.descriptionEncrypted) : null,
+      description: row.descriptionEncrypted ? decryptFieldOrSentinel(row.descriptionEncrypted) : null,
       child: row.child ? { id: row.child.id, name: `${row.child.firstName} ${row.child.lastName}` } : null,
       loggedBy,
       createdAt: row.createdAt,

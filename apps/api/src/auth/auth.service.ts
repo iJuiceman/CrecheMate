@@ -9,6 +9,10 @@ import { LoginDto, RegisterFirstAdminDto } from "./dto";
 // login timing doesn't reveal whether a username is registered.
 const DUMMY_HASH = bcrypt.hashSync("account-enumeration-timing-equalizer", 12);
 
+// Lockout policy: straight failures before a temporary lock, and its length.
+const MAX_FAILED_ATTEMPTS = 8;
+const LOCK_MINUTES = 15;
+
 @Injectable()
 export class AuthService {
   constructor(
@@ -55,11 +59,48 @@ export class AuthService {
 
   async login(dto: LoginDto) {
     const user = await this.prisma.user.findUnique({ where: { username: dto.username.toLowerCase() } });
+    // Account lockout: MAX_FAILED_ATTEMPTS straight failures lock the account
+    // for LOCK_MINUTES — the per-IP throttle alone doesn't slow a distributed
+    // guesser. The dummy compare still runs first so timing stays equalised.
     const ok = await bcrypt.compare(dto.password, user?.passwordHash ?? DUMMY_HASH);
-    if (!user || !ok) throw new UnauthorizedException("Invalid username or password");
+    if (user?.lockedUntil && user.lockedUntil.getTime() > Date.now()) {
+      const mins = Math.ceil((user.lockedUntil.getTime() - Date.now()) / 60000);
+      throw new UnauthorizedException(`Too many failed attempts — this account is locked for another ${mins} minute${mins === 1 ? "" : "s"}`);
+    }
+    if (!user || !ok) {
+      if (user) {
+        const failures = user.failedLoginCount + 1;
+        await this.prisma.user.update({
+          where: { id: user.id },
+          data: {
+            failedLoginCount: failures >= MAX_FAILED_ATTEMPTS ? 0 : failures,
+            lockedUntil: failures >= MAX_FAILED_ATTEMPTS ? new Date(Date.now() + LOCK_MINUTES * 60000) : null,
+          },
+        });
+      }
+      throw new UnauthorizedException("Invalid username or password");
+    }
     if (user.status !== "active") throw new UnauthorizedException("Your account is suspended");
-    await this.prisma.user.update({ where: { id: user.id }, data: { lastLoginAt: new Date() } });
+    await this.prisma.user.update({
+      where: { id: user.id },
+      data: { lastLoginAt: new Date(), failedLoginCount: 0, lockedUntil: null },
+    });
     return this.issue(user);
+  }
+
+  /** Self-service password change — the only credential path where the staff
+   * member ends up holding a password their admin does NOT know. */
+  async changePassword(payload: JwtPayload, currentPassword: string, newPassword: string) {
+    const user = await this.prisma.user.findUnique({ where: { id: payload.sub } });
+    if (!user) throw new UnauthorizedException();
+    const ok = await bcrypt.compare(currentPassword, user.passwordHash);
+    if (!ok) throw new UnauthorizedException("Your current password is incorrect");
+    const passwordHash = await bcrypt.hash(newPassword, 12);
+    await this.prisma.user.update({
+      where: { id: user.id },
+      data: { passwordHash, failedLoginCount: 0, lockedUntil: null },
+    });
+    return { ok: true };
   }
 
   async me(payload: JwtPayload) {

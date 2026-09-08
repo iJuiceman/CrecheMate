@@ -3,7 +3,7 @@ import { DateTime } from "luxon";
 import { PrismaService } from "../prisma/prisma.service";
 import { SettingsService } from "../settings/settings.service";
 import { PaymentsService } from "../payments/payments.service";
-import { decryptField, encryptField } from "../common/encryption.util";
+import { decryptField, decryptFieldOrSentinel, encryptField } from "../common/encryption.util";
 import { computeAge } from "../common/age.util";
 import { JwtPayload } from "../auth/jwt-payload.interface";
 import { BookAttendanceDto, CheckOutDto, DropInDto, TakePaymentDto } from "./attendance.dto";
@@ -43,7 +43,7 @@ export class AttendanceService {
       id: child.id,
       name: `${child.firstName} ${child.lastName}`,
       age: computeAge(child.birthMonth, child.birthYear),
-      medicalNotes: child.medicalNotesEncrypted ? decryptField(child.medicalNotesEncrypted) : null,
+      medicalNotes: child.medicalNotesEncrypted ? decryptFieldOrSentinel(child.medicalNotesEncrypted) : null,
       guardian: child.guardian
         ? {
             name: `${child.guardian.firstName} ${child.guardian.lastName}`,

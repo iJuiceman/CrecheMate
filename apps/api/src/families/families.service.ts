@@ -1,6 +1,6 @@
 import { Injectable, NotFoundException } from "@nestjs/common";
 import { PrismaService } from "../prisma/prisma.service";
-import { decryptField, encryptField } from "../common/encryption.util";
+import { decryptField, decryptFieldOrSentinel, encryptField } from "../common/encryption.util";
 import { computeAge } from "../common/age.util";
 import { AddChildDto, CreateFamilyDto, UpdateChildDto, UpdateGuardianDto } from "./families.dto";
 
@@ -20,7 +20,7 @@ export class FamiliesService {
       // (audited) detail view only, so a facility-wide list request never
       // pulls every child's medical notes into one response.
       hasMedicalNotes: !!c.medicalNotesEncrypted,
-      medicalNotes: includeDetail && c.medicalNotesEncrypted ? decryptField(c.medicalNotesEncrypted) : null,
+      medicalNotes: includeDetail && c.medicalNotesEncrypted ? decryptFieldOrSentinel(c.medicalNotesEncrypted) : null,
       active: c.active,
       emergencyContacts: (c.emergencyContacts ?? []).map((e: any) => ({
         id: e.id,

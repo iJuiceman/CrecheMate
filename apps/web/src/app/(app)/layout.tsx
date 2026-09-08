@@ -26,6 +26,7 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
   const router = useRouter();
   const pathname = usePathname();
   const [pendingRequests, setPendingRequests] = useState(0);
+  const [showPassword, setShowPassword] = useState(false);
 
   useEffect(() => {
     if (!loading && !user) router.replace("/login");
@@ -76,12 +77,69 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
         <div className="border-t border-line p-3">
           <p className="px-1 text-sm font-medium text-ink">{user.firstName} {user.lastName}</p>
           <p className="px-1 text-xs capitalize text-ink/50">{user.role}</p>
-          <button onClick={logout} className="mt-2 w-full rounded-lg px-1 py-1.5 text-left text-sm text-ink/60 hover:text-coral">
+          <button onClick={() => setShowPassword(true)} className="mt-2 w-full rounded-lg px-1 py-1.5 text-left text-sm text-ink/60 hover:text-teal-dark">
+            Change password
+          </button>
+          <button onClick={logout} className="w-full rounded-lg px-1 py-1.5 text-left text-sm text-ink/60 hover:text-coral">
             Sign out
           </button>
         </div>
       </aside>
       <main className="flex-1 overflow-y-auto">{children}</main>
+      {showPassword && <ChangePasswordModal onClose={() => setShowPassword(false)} />}
+    </div>
+  );
+}
+
+// Self-service password change — the only path where a staff member ends up
+// holding a credential their admin doesn't know (admin resets hand out a
+// password the admin has seen).
+function ChangePasswordModal({ onClose }: { onClose: () => void }) {
+  const [current, setCurrent] = useState("");
+  const [next, setNext] = useState("");
+  const [confirm, setConfirm] = useState("");
+  const [busy, setBusy] = useState(false);
+  const [err, setErr] = useState<string | null>(null);
+  const [done, setDone] = useState(false);
+
+  async function save() {
+    if (next.length < 8) return setErr("The new password must be at least 8 characters.");
+    if (next !== confirm) return setErr("The new passwords don't match.");
+    setBusy(true); setErr(null);
+    try {
+      await api.post("/auth/change-password", { currentPassword: current, newPassword: next });
+      setDone(true);
+    } catch (e) {
+      setErr(e instanceof Error ? e.message : "Couldn't change the password.");
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  return (
+    <div className="fixed inset-0 z-50 grid place-items-center bg-ink/30 p-4" onClick={onClose}>
+      <div className="w-full max-w-sm rounded-card bg-white p-5 shadow-xl" onClick={(e) => e.stopPropagation()}>
+        <h2 className="font-display text-lg font-bold text-ink">Change password</h2>
+        {done ? (
+          <>
+            <p className="mt-3 rounded-lg bg-teal-light px-3 py-2 text-sm text-teal-dark">Password changed. Use it next time you sign in.</p>
+            <button className="btn mt-4 w-full" onClick={onClose}>Done</button>
+          </>
+        ) : (
+          <>
+            <div className="mt-3 space-y-2">
+              <div><label className="label">Current password</label><input type="password" className="field" autoComplete="current-password" value={current} onChange={(e) => setCurrent(e.target.value)} /></div>
+              <div><label className="label">New password (8+ characters)</label><input type="password" className="field" autoComplete="new-password" value={next} onChange={(e) => setNext(e.target.value)} /></div>
+              <div><label className="label">Repeat new password</label><input type="password" className="field" autoComplete="new-password" value={confirm} onChange={(e) => setConfirm(e.target.value)} /></div>
+            </div>
+            {err && <p className="mt-3 text-sm text-coral">{err}</p>}
+            <div className="mt-4 flex gap-2">
+              <button className="btn-secondary flex-1" onClick={onClose}>Cancel</button>
+              <button className="btn flex-1" onClick={save} disabled={busy || !current || !next}>{busy ? "Saving…" : "Change password"}</button>
+            </div>
+          </>
+        )}
+      </div>
     </div>
   );
 }
